@@ -11,9 +11,9 @@ class TaoMucTieu(BaseModel):
     ky_danh_gia_id: str
     loai_okr: str
     muc_tieu_lon: str
-    ket_qua_then_chot: str
-    chi_tieu: float
-    don_vi: str
+    ket_qua_then_chot: Optional[str] = None
+    chi_tieu: Optional[float] = None
+    don_vi: Optional[str] = None
     han_hoan_thanh: Optional[date] = None
 
 class SuaMucTieu(BaseModel):
@@ -66,11 +66,14 @@ def tao_muc_tieu(body: TaoMucTieu, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
         "ky_danh_gia_id": body.ky_danh_gia_id,
         "loai_okr": body.loai_okr,
         "muc_tieu_lon": body.muc_tieu_lon,
-        "ket_qua_then_chot": body.ket_qua_then_chot,
-        "chi_tieu": body.chi_tieu,
-        "don_vi": body.don_vi,
-        "trang_thai": "cho_duyet"
+        "trang_thai": "cho_duyet",
+        "chi_tieu": body.chi_tieu or 100,
+        "don_vi": body.don_vi or "phan_tram",
+        "thuc_dat": 0,
+        "tien_do_phan_tram": 0,
     }
+    if body.ket_qua_then_chot:
+        data["ket_qua_then_chot"] = body.ket_qua_then_chot
     if body.han_hoan_thanh:
         data["han_hoan_thanh"] = body.han_hoan_thanh.isoformat()
 
