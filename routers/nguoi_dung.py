@@ -104,6 +104,22 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
 
     return {"thanh_cong": thanh_cong, "loi": loi, "tong": thanh_cong + len(loi)}
 
+class CapNhatHocSinh(BaseModel):
+    ho_ten: Optional[str] = None
+    email: Optional[str] = None
+
+@router.put("/hoc-sinh/{id}")
+def cap_nhat_hoc_sinh(id: str, body: CapNhatHocSinh, nguoi_dung=Depends(chi_giao_vien)):
+    data = {}
+    if body.ho_ten: data["ho_ten"] = body.ho_ten
+    if body.email: data["email"] = body.email
+    if not data:
+        raise HTTPException(status_code=400, detail="Khong co du lieu de cap nhat")
+    res = supabase.table("nguoi_dung").update(data).eq("id", id).eq("vai_tro", "hoc_sinh").execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Khong tim thay hoc sinh")
+    return res.data[0]
+
 @router.put("/{id}/reset-mat-khau")
 def reset_mat_khau(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     if nguoi_dung["vai_tro"] not in ["quan_tri", "giao_vien"]:
