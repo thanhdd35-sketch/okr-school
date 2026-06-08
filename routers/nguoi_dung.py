@@ -24,7 +24,7 @@ class ThemGiaoVien(BaseModel):
 
 @router.get("/hoc-sinh/{ten_lop}")
 def danh_sach_hoc_sinh(ten_lop: str, nguoi_dung=Depends(chi_giao_vien)):
-    res = supabase.table("nguoi_dung").select("id, ho_ten, email, email_phu_huynh, dang_hoat_dong, ngay_tao").eq("ten_lop", ten_lop).eq("vai_tro", "hoc_sinh").order("ho_ten").execute()
+    res = supabase.table("nguoi_dung").select("id, ho_ten, email, email_phu_huynh, dang_hoat_dong, ngay_tao").eq("ten_lop", ten_lop).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).order("ho_ten").execute()
     return res.data
 
 @router.post("/hoc-sinh")

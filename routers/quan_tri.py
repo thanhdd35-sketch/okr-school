@@ -82,7 +82,7 @@ def danh_sach_nguoi_dung(vai_tro: Optional[str] = None, nguoi_dung=Depends(chi_q
     query = supabase.table("nguoi_dung").select("id, ho_ten, email, vai_tro, ten_lop, si_so, email_phu_huynh, dang_hoat_dong, ngay_tao")
     if vai_tro:
         query = query.eq("vai_tro", vai_tro)
-    query = query.neq("vai_tro", "quan_tri").order("ho_ten")
+    query = query.neq("vai_tro", "quan_tri").eq("dang_hoat_dong", True).order("ho_ten")
     res = query.execute()
     return res.data
 
