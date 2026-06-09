@@ -9,6 +9,9 @@ router = APIRouter()
 
 class CapNhatNhanXet(BaseModel):
     nhan_xet_gv: str
+    diem_so: Optional[float] = None
+    ky_vong_ky_tiep: Optional[str] = None
+    trien_khai_xuat_sac: Optional[bool] = None
 
 class YKienPhuHuynh(BaseModel):
     phan_hoi_ph: str
@@ -23,13 +26,18 @@ def xem_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_
 @router.put("/{hs_id}")
 def cap_nhat_nhan_xet(hs_id: str, ky_id: str, body: CapNhatNhanXet, nguoi_dung=Depends(chi_giao_vien)):
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
+    update_data = {"nhan_xet_gv": body.nhan_xet_gv}
+    if body.diem_so is not None:
+        update_data["diem_so"] = body.diem_so
+    if body.ky_vong_ky_tiep is not None:
+        update_data["ky_vong_ky_tiep"] = body.ky_vong_ky_tiep
+    if body.trien_khai_xuat_sac is not None:
+        update_data["trien_khai_xuat_sac"] = body.trien_khai_xuat_sac
     if res.data:
-        supabase.table("danh_gia_cuoi_ky").update({"nhan_xet_gv": body.nhan_xet_gv}).eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
+        supabase.table("danh_gia_cuoi_ky").update(update_data).eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
     else:
         supabase.table("danh_gia_cuoi_ky").insert({
-            "hoc_sinh_id": hs_id,
-            "ky_danh_gia_id": ky_id,
-            "nhan_xet_gv": body.nhan_xet_gv
+            "hoc_sinh_id": hs_id, "ky_danh_gia_id": ky_id, **update_data
         }).execute()
     return {"message": "Da luu nhan xet"}
 

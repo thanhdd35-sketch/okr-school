@@ -6,6 +6,7 @@ import os
 load_dotenv()
 
 from routers import xac_thuc, muc_tieu, nguoi_dung, ky_danh_gia, mau_muc_tieu, danh_gia_cuoi_ky, thong_bao, bao_cao, ai, quan_tri
+from routers import ket_qua_then_chot
 from scheduler import khoi_dong_scheduler
 
 app = FastAPI(title="OKR Truong Hoc API", version="1.0.0")
@@ -28,6 +29,7 @@ app.include_router(thong_bao.router, prefix="/api/v1/thong-bao", tags=["Thong ba
 app.include_router(bao_cao.router, prefix="/api/v1/bao-cao", tags=["Bao cao"])
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI"])
 app.include_router(quan_tri.router, prefix="/api/v1/quan-tri", tags=["Quan tri"])
+app.include_router(ket_qua_then_chot.router, prefix="/api/v1/kr", tags=["Ket qua then chot"])
 
 @app.on_event("startup")
 async def startup_event():
