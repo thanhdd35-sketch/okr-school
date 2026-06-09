@@ -96,7 +96,8 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
                 "ten_lop": lop,
                 "vai_tro": vai_tro,
                 "mat_khau_hash": hash_mat_khau(MAT_KHAU_MAC_DINH),
-                "bat_buoc_doi_mat_khau": True
+                "bat_buoc_doi_mat_khau": True,
+                "dang_hoat_dong": True
             }).execute()
             thanh_cong += 1
         except Exception as e:

@@ -48,7 +48,9 @@ def dang_nhap(body: DangNhapBody, request: Request):
         "token": token,
         "bat_buoc_doi_mat_khau": user.get("bat_buoc_doi_mat_khau", False),
         "vai_tro": user["vai_tro"],
-        "ho_ten": user["ho_ten"]
+        "ho_ten": user["ho_ten"],
+        "ten_lop": user.get("ten_lop"),
+        "id": user["id"]
     }
 
 @router.post("/dang-nhap-phu-huynh")
