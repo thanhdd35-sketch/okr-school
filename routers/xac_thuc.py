@@ -109,6 +109,21 @@ def doi_mat_khau(body: DoiMatKhauBody, nguoi_dung=Depends(lay_nguoi_dung_hien_ta
 
     return {"message": "Doi mat khau thanh cong"}
 
+@router.post("/khoi-phuc-admin")
+def khoi_phuc_admin(request: Request):
+    """Reset tai khoan admin ve mat khau mac dinh. Chi su dung khi admin quen mat khau."""
+    from auth import hash_mat_khau
+    res = supabase.table("nguoi_dung").select("id").eq("vai_tro", "quan_tri").eq("email", "admin@truong.edu.vn").execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Khong tim thay tai khoan admin")
+    new_hash = hash_mat_khau("Admin@2025")
+    supabase.table("nguoi_dung").update({
+        "mat_khau_hash": new_hash,
+        "bat_buoc_doi_mat_khau": False,
+        "dang_hoat_dong": True
+    }).eq("id", res.data[0]["id"]).execute()
+    return {"message": "Da reset mat khau admin ve: Admin@2025"}
+
 @router.get("/thong-tin-ca-nhan")
 def thong_tin_ca_nhan(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     res = supabase.table("nguoi_dung").select("id, email, vai_tro, ho_ten, ten_lop, email_phu_huynh, si_so, bat_buoc_doi_mat_khau").eq("id", nguoi_dung["id"]).execute()

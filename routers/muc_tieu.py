@@ -135,6 +135,13 @@ def cap_nhat_tien_do(id: str, body: CapNhatTienDo, nguoi_dung=Depends(lay_nguoi_
         "ghi_chu": body.ghi_chu
     }
     supabase.table("lich_su_cap_nhat").insert(data).execute()
+
+    # Cap nhat thuc_dat va tien_do_phan_tram tren muc_tieu
+    supabase.table("muc_tieu").update({
+        "thuc_dat": body.gia_tri_dat_duoc,
+        "tien_do_phan_tram": min(tien_do, 100.0)
+    }).eq("id", id).execute()
+
     return {"message": "Cap nhat thanh cong", "tien_do": tien_do}
 
 @router.post("/{id}/duyet")
