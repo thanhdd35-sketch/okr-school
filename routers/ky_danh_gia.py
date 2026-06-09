@@ -31,9 +31,10 @@ def danh_sach_ky(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
 
 @router.post("/")
 def tao_ky(body: TaoKy, nguoi_dung=Depends(chi_quan_tri)):
+    # DB chi chap nhan trang_thai: 'mo' | 'khoa'
     data = {
         "ten_ky": body.ten_ky,
-        "trang_thai": "chuan_bi",
+        "trang_thai": "khoa",   # mac dinh: chua mo
         "ngay_bat_dau": body.ngay_bat_dau.isoformat(),
         "ngay_ket_thuc": body.ngay_ket_thuc.isoformat(),
         "nguoi_tao": nguoi_dung["id"]
@@ -62,7 +63,7 @@ def sua_ky(id: str, body: SuaKy, nguoi_dung=Depends(chi_quan_tri)):
 
 @router.patch("/{id}/trang-thai")
 def doi_trang_thai(id: str, body: DoiTrangThai, nguoi_dung=Depends(chi_quan_tri)):
-    cho_phep = ["chuan_bi", "mo", "dong"]
+    cho_phep = ["mo", "khoa"]
     if body.trang_thai not in cho_phep:
         raise HTTPException(status_code=400, detail=f"Trang thai phai la: {cho_phep}")
     res = supabase.table("ky_danh_gia").update({"trang_thai": body.trang_thai}).eq("id", id).execute()
