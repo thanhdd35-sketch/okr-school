@@ -68,25 +68,42 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
     if nguoi_dung["vai_tro"] not in ["quan_tri", "giao_vien"]:
         raise HTTPException(status_code=403, detail="Khong co quyen")
 
+    # Neu frontend khong gui ten_lop, lay tu JWT cua giao vien
+    ten_lop_mac_dinh = ten_lop or nguoi_dung.get("ten_lop") or ""
+
     noi_dung = await file.read()
-    wb = openpyxl.load_workbook(io.BytesIO(noi_dung))
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(noi_dung))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"File Excel khong hop le: {str(e)}")
     ws = wb.active
 
     thanh_cong = 0
     loi = []
 
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        if not row[0]:
+        # Bo qua dong trong
+        if not row or not row[0]:
             continue
         try:
-            ho_ten = str(row[0]).strip()
-            email = str(row[1]).strip()
-            email_ph = str(row[2]).strip() if len(row) > 2 and row[2] else None
-            lop = str(row[3]).strip() if len(row) > 3 and row[3] else ten_lop
+            ho_ten = str(row[0]).strip() if row[0] else ""
+            email = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+            email_ph = str(row[2]).strip() if len(row) > 2 and row[2] and str(row[2]).strip() != "None" else None
+            lop = str(row[3]).strip() if len(row) > 3 and row[3] else ten_lop_mac_dinh
+
+            if not ho_ten:
+                loi.append(f"Dong {i}: Thieu ho ten")
+                continue
+            if not email or "@" not in email:
+                loi.append(f"Dong {i}: Email khong hop le: '{email}'")
+                continue
+            if not lop:
+                loi.append(f"Dong {i}: Khong xac dinh duoc lop (GV chua duoc phan lop)")
+                continue
 
             kiem_tra = supabase.table("nguoi_dung").select("id").eq("email", email).execute()
             if kiem_tra.data:
-                loi.append(f"Dong {i}: Email {email} da ton tai")
+                loi.append(f"Dong {i}: Email '{email}' da ton tai")
                 continue
 
             supabase.table("nguoi_dung").insert({
@@ -101,7 +118,7 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
             }).execute()
             thanh_cong += 1
         except Exception as e:
-            loi.append(f"Dong {i}: Loi {str(e)}")
+            loi.append(f"Dong {i}: {str(e)[:120]}")
 
     return {"thanh_cong": thanh_cong, "loi": loi, "tong": thanh_cong + len(loi)}
 
