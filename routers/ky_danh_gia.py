@@ -9,17 +9,13 @@ router = APIRouter()
 
 class TaoKy(BaseModel):
     ten_ky: str
-    mo_ta: Optional[str] = None
     ngay_bat_dau: date
     ngay_ket_thuc: date
-    han_nop_muc_tieu: Optional[date] = None
 
 class SuaKy(BaseModel):
     ten_ky: Optional[str] = None
-    mo_ta: Optional[str] = None
     ngay_bat_dau: Optional[date] = None
     ngay_ket_thuc: Optional[date] = None
-    han_nop_muc_tieu: Optional[date] = None
 
 class DoiTrangThai(BaseModel):
     trang_thai: str  # chuan_bi | mo | dong
@@ -34,15 +30,11 @@ def tao_ky(body: TaoKy, nguoi_dung=Depends(chi_quan_tri)):
     # DB chi chap nhan trang_thai: 'mo' | 'khoa'
     data = {
         "ten_ky": body.ten_ky,
-        "trang_thai": "khoa",   # mac dinh: chua mo
+        "trang_thai": "khoa",
         "ngay_bat_dau": body.ngay_bat_dau.isoformat(),
         "ngay_ket_thuc": body.ngay_ket_thuc.isoformat(),
         "nguoi_tao": nguoi_dung["id"]
     }
-    if body.mo_ta:
-        data["mo_ta"] = body.mo_ta
-    if body.han_nop_muc_tieu:
-        data["han_nop_muc_tieu"] = body.han_nop_muc_tieu.isoformat()
     res = supabase.table("ky_danh_gia").insert(data).execute()
     return res.data[0]
 
@@ -50,10 +42,8 @@ def tao_ky(body: TaoKy, nguoi_dung=Depends(chi_quan_tri)):
 def sua_ky(id: str, body: SuaKy, nguoi_dung=Depends(chi_quan_tri)):
     data = {}
     if body.ten_ky: data["ten_ky"] = body.ten_ky
-    if body.mo_ta is not None: data["mo_ta"] = body.mo_ta
     if body.ngay_bat_dau: data["ngay_bat_dau"] = body.ngay_bat_dau.isoformat()
     if body.ngay_ket_thuc: data["ngay_ket_thuc"] = body.ngay_ket_thuc.isoformat()
-    if body.han_nop_muc_tieu: data["han_nop_muc_tieu"] = body.han_nop_muc_tieu.isoformat()
     if not data:
         raise HTTPException(status_code=400, detail="Khong co du lieu de cap nhat")
     res = supabase.table("ky_danh_gia").update(data).eq("id", id).execute()
