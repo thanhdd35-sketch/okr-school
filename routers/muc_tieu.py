@@ -82,24 +82,38 @@ def tao_muc_tieu(body: TaoMucTieu, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
         raise HTTPException(status_code=400, detail="Ky danh gia khong ton tai hoac da bi khoa")
 
     trang_thai = "nhap" if body.la_nhap else "cho_duyet"
+    # Chỉ gửi các cột cơ bản - cột mới dùng DEFAULT nếu migration đã chạy
     data = {
         "hoc_sinh_id": nguoi_dung["id"],
         "ky_danh_gia_id": body.ky_danh_gia_id,
         "loai_okr": body.loai_okr,
         "muc_tieu_lon": body.muc_tieu_lon,
-        "tan_suat": body.tan_suat or "hang_thang",
         "trang_thai": trang_thai,
-        "tien_do_tong": 0,
     }
+    # Thêm cột mới (chỉ có sau migration v2.2)
+    optional_fields = {}
+    if body.tan_suat:
+        optional_fields["tan_suat"] = body.tan_suat
     if body.nhan:
-        data["nhan"] = body.nhan
+        optional_fields["nhan"] = body.nhan
     if body.cau_chuyen:
-        data["cau_chuyen"] = body.cau_chuyen
+        optional_fields["cau_chuyen"] = body.cau_chuyen
     if body.han_hoan_thanh:
-        data["han_hoan_thanh"] = body.han_hoan_thanh.isoformat()
+        optional_fields["han_hoan_thanh"] = body.han_hoan_thanh.isoformat()
 
-    res = supabase.table("muc_tieu").insert(data).execute()
-    return res.data[0]
+    try:
+        res = supabase.table("muc_tieu").insert({**data, **optional_fields}).execute()
+        return res.data[0]
+    except Exception as e:
+        err_str = str(e)
+        # Nếu lỗi do cột mới chưa tồn tại, thử lại với dữ liệu tối thiểu
+        if "400" in err_str or "column" in err_str.lower() or "constraint" in err_str.lower():
+            try:
+                res2 = supabase.table("muc_tieu").insert(data).execute()
+                return res2.data[0]
+            except Exception as e2:
+                raise HTTPException(status_code=500, detail=f"Loi tao OKR: {str(e2)[:200]}. Vui long chay migration SQL trong Supabase.")
+        raise HTTPException(status_code=500, detail=f"Loi tao OKR: {err_str[:200]}")
 
 @router.put("/{id}")
 def sua_muc_tieu(id: str, body: SuaMucTieu, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
