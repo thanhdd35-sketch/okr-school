@@ -91,8 +91,11 @@ def them_kr(mt_id: str, body: TaoKR, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)
     if body.han_hoan_thanh:
         data["han_hoan_thanh"] = body.han_hoan_thanh.isoformat()
 
-    res = supabase.table("ket_qua_then_chot").insert(data).execute()
-    return res.data[0]
+    try:
+        res = supabase.table("ket_qua_then_chot").insert(data).execute()
+        return res.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Loi tao KR: {str(e)[:150]}. Bang ket_qua_then_chot co the chua ton tai - vui long chay migration SQL.")
 
 @router.put("/{kr_id}")
 def sua_kr(kr_id: str, body: SuaKR, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):

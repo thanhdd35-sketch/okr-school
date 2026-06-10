@@ -128,9 +128,14 @@ def nop_okr(id: str, body: NopOKR, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
         raise HTTPException(status_code=404, detail="Khong tim thay")
     if mt.data[0]["trang_thai"] not in ["nhap", "yeu_cau_sua"]:
         raise HTTPException(status_code=400, detail="Chi nop khi o trang thai nhap hoac can sua")
-    krs = supabase.table("ket_qua_then_chot").select("id").eq("muc_tieu_id", id).execute()
-    if not krs.data:
-        raise HTTPException(status_code=400, detail="Phai co it nhat 1 KR truoc khi nop")
+    try:
+        krs = supabase.table("ket_qua_then_chot").select("id").eq("muc_tieu_id", id).execute()
+        if not krs.data:
+            raise HTTPException(status_code=400, detail="OKR chua co Ket qua then chot (KR). Vui long them it nhat 1 KR truoc khi nop.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Loi kiem tra KR: {str(e)[:100]}. Vui long chay lai migration SQL trong Supabase.")
     update = {"trang_thai": "cho_duyet", "ngay_cap_nhat": datetime.now(timezone.utc).isoformat()}
     if body.ket_qua_checklist_hs:
         update["ket_qua_checklist_hs"] = body.ket_qua_checklist_hs

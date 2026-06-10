@@ -16,7 +16,9 @@ class TaoNhanXetBody(BaseModel):
     muc_tieu_id: str
 
 class GoiYKRBody(BaseModel):
-    muc_tieu_lon: str
+    muc_tieu_lon: Optional[str] = None
+    muc_tieu: Optional[str] = None   # alias từ frontend cũ
+    loai_okr: Optional[str] = None
 
 class TomTatLopBody(BaseModel):
     ten_lop: str
@@ -57,8 +59,13 @@ Chi tra ve doan nhan xet, khong them noi dung khac."""
 
 @router.post("/goi-y-kr")
 def goi_y_kr(body: GoiYKRBody, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    ten_mt = body.muc_tieu_lon or body.muc_tieu or ""
+    if not ten_mt:
+        raise HTTPException(status_code=400, detail="Chua co noi dung muc tieu")
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise HTTPException(status_code=503, detail="AI chua duoc cau hinh")
     prompt = f"""Ban la tro ly giao duc giup hoc sinh THPT Viet Nam dat muc tieu.
-Hoc sinh dat muc tieu lon: "{body.muc_tieu_lon}"
+Hoc sinh dat muc tieu lon: "{ten_mt}"
 Hay de xuat 3 ket qua then chot (Key Result) cu the, do luong duoc cho muc tieu nay.
 Moi ket qua then chot phai co: mo ta ngan gon + con so cu the + don vi.
 Tra ve DUNG 3 goi y, moi goi y tren 1 dong, dinh dang: "Mo ta — X don_vi"

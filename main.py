@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import os
+import traceback
 
 load_dotenv()
 
@@ -18,6 +20,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Global exception handler - đảm bảo luôn trả về JSON thay vì drop connection
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"[ERROR] {request.method} {request.url}: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Loi server: {str(exc)[:200]}"},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
 
 app.include_router(xac_thuc.router, prefix="/api/v1/xac-thuc", tags=["Xac thuc"])
 app.include_router(muc_tieu.router, prefix="/api/v1/muc-tieu", tags=["Muc tieu"])
