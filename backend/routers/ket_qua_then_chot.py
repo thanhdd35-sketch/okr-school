@@ -41,7 +41,12 @@ def _tinh_tien_do(kr: dict, gia_tri_moi: float) -> float:
     if xu == "giam":
         if kd == mt:
             return 100.0
-        td = (kd - gia_tri_moi) / (kd - mt) * 100
+        if kd > mt:
+            # Đúng hướng: khởi điểm cao hơn mục tiêu (VD: 100 → 20)
+            td = (kd - gia_tri_moi) / (kd - mt) * 100
+        else:
+            # Setup không hợp lệ: khởi điểm thấp hơn mục tiêu
+            return 100.0 if gia_tri_moi <= mt else 0.0
     else:
         if mt == kd:
             return 100.0

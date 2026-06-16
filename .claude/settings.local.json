@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -W ignore -c ' *)",
+      "Bash(git commit -m 'feat\\(v2.2\\): multi-KR table, draft/submit flow, approval checklist, revoke, star rating *)",
+      "Bash(python3 -c ' *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'fix\\(giao-vien\\): fix TypeScript errors - setMucTieuHS\\([]\\) and remove nested component hooks *)",
+      "Bash(git push *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(python -m py_compile routers/bao_cao.py)"
+    ]
+  }
+}
