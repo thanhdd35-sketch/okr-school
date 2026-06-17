@@ -81,15 +81,30 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
     thanh_cong = 0
     loi = []
 
+    # Phat hien dinh dang: neu cot dau la so thi co cot STT
+    # Format moi: STT | Ho ten | Email | Email PH | Lop
+    # Format cu:  Ho ten | Email | Email PH | Lop
+    headers = [str(c.value).strip().lower() if c.value else "" for c in ws[1]]
+    has_stt = headers and (headers[0] in ("stt", "số thứ tự", "so thu tu", "tt") or
+                           (ws.cell(2, 1).value is not None and str(ws.cell(2, 1).value).strip().lstrip("0123456789.") == ""))
+
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        # Bo qua dong trong
-        if not row or not row[0]:
+        if not row or all(v is None or str(v).strip() == "" for v in row):
             continue
         try:
-            ho_ten = str(row[0]).strip() if row[0] else ""
-            email = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-            email_ph = str(row[2]).strip() if len(row) > 2 and row[2] and str(row[2]).strip() != "None" else None
-            lop = str(row[3]).strip() if len(row) > 3 and row[3] else ten_lop_mac_dinh
+            if has_stt:
+                stt_val = row[0]
+                stt = int(float(str(stt_val))) if stt_val is not None else i - 1
+                ho_ten = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+                email = str(row[2]).strip() if len(row) > 2 and row[2] else ""
+                email_ph = str(row[3]).strip() if len(row) > 3 and row[3] and str(row[3]).strip() != "None" else None
+                lop = str(row[4]).strip() if len(row) > 4 and row[4] else ten_lop_mac_dinh
+            else:
+                stt = i - 1
+                ho_ten = str(row[0]).strip() if row[0] else ""
+                email = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+                email_ph = str(row[2]).strip() if len(row) > 2 and row[2] and str(row[2]).strip() != "None" else None
+                lop = str(row[3]).strip() if len(row) > 3 and row[3] else ten_lop_mac_dinh
 
             if not ho_ten:
                 loi.append(f"Dong {i}: Thieu ho ten")
@@ -112,6 +127,7 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
                 "email_phu_huynh": email_ph,
                 "ten_lop": lop,
                 "vai_tro": vai_tro,
+                "so_thu_tu": stt,
                 "mat_khau_hash": hash_mat_khau(MAT_KHAU_MAC_DINH),
                 "bat_buoc_doi_mat_khau": True,
                 "dang_hoat_dong": True
