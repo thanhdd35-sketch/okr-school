@@ -74,3 +74,14 @@ def mo_ky(id: str, nguoi_dung=Depends(chi_quan_tri)):
     if not res.data:
         raise HTTPException(status_code=404, detail="Khong tim thay ky danh gia")
     return {"message": "Da mo ky danh gia"}
+
+@router.delete("/{id}")
+def xoa_ky(id: str, nguoi_dung=Depends(chi_quan_tri)):
+    # Kiểm tra còn OKR trong kỳ không
+    okrs = supabase.table("muc_tieu").select("id").eq("ky_danh_gia_id", id).execute()
+    if okrs.data:
+        raise HTTPException(status_code=400, detail=f"Khong the xoa: ky dang co {len(okrs.data)} muc tieu OKR")
+    res = supabase.table("ky_danh_gia").delete().eq("id", id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Khong tim thay ky danh gia")
+    return {"message": "Da xoa ky danh gia"}
