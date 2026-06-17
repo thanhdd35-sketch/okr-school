@@ -114,7 +114,11 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
     offset = email_col_idx - 1  # vi tri bat dau cua ho_ten
 
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        # Bo qua dong trong hoac dong ghi chu (khong co @ o bat ky o nao)
         if not row or all(v is None or str(v).strip() == "" for v in row):
+            continue
+        row_has_email = any(v and "@" in str(v) for v in row)
+        if not row_has_email:
             continue
         try:
             # STT
