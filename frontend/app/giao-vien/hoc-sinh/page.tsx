@@ -47,6 +47,23 @@ const EMOJI_OPTS = [
   { v: 4, icon: "😊", label: "Đồng ý" },
 ];
 
+function tinhTienDoKR(kr: any, val: number): number {
+  const kd = parseFloat(kr.gia_tri_khoi_diem) || 0;
+  const mt = parseFloat(kr.gia_tri_muc_tieu) || 100;
+  if (kr.xu_huong === "giam") {
+    if (kd === mt) return 100;
+    if (kd > mt) return Math.max(0, Math.min(100, Math.round((kd - val) / (kd - mt) * 100)));
+    return val <= mt ? 100 : 0;
+  }
+  if (mt === kd) return 100;
+  return Math.max(0, Math.min(100, Math.round((val - kd) / (mt - kd) * 100)));
+}
+
+function calcOKRProgress(krs: any[]): number {
+  if (!krs.length) return 0;
+  return Math.round(krs.reduce((s, kr) => s + tinhTienDoKR(kr, kr.gia_tri_hien_tai ?? kr.gia_tri_khoi_diem ?? 0), 0) / krs.length);
+}
+
 export default function GiaoVienHocSinhPage() {
   const { nguoiDung, khoiTao } = useStore();
   const router = useRouter();
@@ -259,16 +276,29 @@ export default function GiaoVienHocSinhPage() {
       const sl = r.data.thanh_cong || 0;
       const loi: string[] = r.data.loi || [];
       if (sl > 0) { toast.success(`Đã nhập ${sl} học sinh!`); fetchHS(); }
-      loi.forEach((msg: string) => toast.error(msg, { duration: 6000 }));
-      if (sl === 0 && loi.length === 0) toast.info("File không có dữ liệu");
+      else if (loi.length > 0 && loi.every(m => m.includes("da ton tai"))) {
+        toast.warning(`Tất cả ${loi.length} email đã tồn tại trong hệ thống.`);
+      } else if (sl === 0 && loi.length === 0) {
+        toast.info("File không có dữ liệu");
+      }
+      const loiNghiem = loi.filter(m => !m.includes("da ton tai"));
+      const loiTrung = loi.filter(m => m.includes("da ton tai"));
+      loiNghiem.forEach((msg: string) => toast.error(msg, { duration: 6000 }));
+      if (loiTrung.length > 0 && sl > 0) toast.warning(`${loiTrung.length} email đã tồn tại (bỏ qua)`, { duration: 4000 });
     } catch (e: any) { toast.error(e.response?.data?.detail || "Lỗi nhập Excel"); }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
   }
 
-  const filtered = hsList.filter(hs =>
-    hs.ho_ten?.toLowerCase().includes(search.toLowerCase()) ||
-    hs.email?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = hsList
+    .filter(hs =>
+      hs.ho_ten?.toLowerCase().includes(search.toLowerCase()) ||
+      hs.email?.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      const sa = a.so_thu_tu ?? 9999, sb = b.so_thu_tu ?? 9999;
+      if (sa !== sb) return sa - sb;
+      return (a.ho_ten || "").localeCompare(b.ho_ten || "", "vi", { sensitivity: "base" });
+    });
 
   return (
     <Layout menu={MENU} tieuDe="Giáo viên">
@@ -311,10 +341,11 @@ export default function GiaoVienHocSinhPage() {
                 {(nguoiDung as any)?.ten_lop ? "Không có học sinh" : "Bạn chưa được phân lớp"}
               </div>
             )}
-            {filtered.map(hs => (
+            {filtered.map((hs, idx) => (
               <div key={hs.id} onClick={() => chonHS(hs)}
                 className={`p-3 cursor-pointer hover:bg-orange-50 transition-colors ${sel?.id === hs.id ? "bg-orange-50 border-l-4 border-orange-500" : "border-l-4 border-transparent"}`}>
                 <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 w-5 text-right flex-shrink-0">{hs.so_thu_tu ?? idx + 1}</span>
                   <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-sm font-bold text-orange-600 flex-shrink-0">
                     {hs.ho_ten?.[0] || "?"}
                   </div>
@@ -387,7 +418,7 @@ export default function GiaoVienHocSinhPage() {
                     const tt = TT[mt.trang_thai] || { label: mt.trang_thai, cls: "bg-gray-100 text-gray-500" };
                     const tdStyle = mt.trang_thai_tien_do ? TIEN_DO_STYLE[mt.trang_thai_tien_do] : null;
                     const krs = krsMap[mt.id] || [];
-                    const td = mt.tien_do_tong || 0;
+                    const td = calcOKRProgress(krs);
                     return (
                       <div key={mt.id} className="bg-white rounded-xl border shadow-sm p-4">
                         <div className="flex items-start justify-between mb-2">
@@ -420,7 +451,7 @@ export default function GiaoVienHocSinhPage() {
                                   </span>
                                   <span className="text-gray-500 ml-2 flex-shrink-0">
                                     {kr.gia_tri_hien_tai}/{kr.gia_tri_muc_tieu} {kr.don_vi}
-                                    <span className="ml-1 font-bold text-orange-600">{kr.tien_do_phan_tram || 0}%</span>
+                                    <span className="ml-1 font-bold text-orange-600">{tinhTienDoKR(kr, kr.gia_tri_hien_tai ?? kr.gia_tri_khoi_diem ?? 0)}%</span>
                                   </span>
                                 </div>
                               </div>
