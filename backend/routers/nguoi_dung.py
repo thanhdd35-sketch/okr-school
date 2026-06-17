@@ -81,11 +81,21 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
     thanh_cong = 0
     loi = []
 
-    # Phat hien co cot STT o dau khong (header row 1)
-    headers = [str(c.value).strip().lower() if c.value else "" for c in ws[1]]
-    has_stt = bool(headers) and (headers[0] in ("stt", "số thứ tự", "so thu tu", "tt") or
-                                  (ws.cell(2, 1).value is not None and
-                                   str(ws.cell(2, 1).value).strip().lstrip("0123456789.") == ""))
+    # Phat hien co cot STT o dau khong
+    # Cach 1: header cot A la "STT"
+    h1 = str(ws.cell(1, 1).value or "").strip().upper()
+    has_stt = h1 in ("STT", "SỐ THỨ TỰ", "SO THU TU", "TT", "NO", "#")
+    # Cach 2: cell A2 la so nguyen
+    if not has_stt:
+        v = ws.cell(2, 1).value
+        if isinstance(v, (int, float)):
+            has_stt = True
+        elif v is not None:
+            try:
+                int(str(v).strip())
+                has_stt = True
+            except (ValueError, TypeError):
+                pass
 
     # Format GV: STT | Ho ten | Email | Lop CN | Si so
     # Format HS: STT | Ho ten | Email HS | Email PH | Lop
