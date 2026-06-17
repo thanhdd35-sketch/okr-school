@@ -81,30 +81,40 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
     thanh_cong = 0
     loi = []
 
-    # Phat hien dinh dang: neu cot dau la so thi co cot STT
-    # Format moi: STT | Ho ten | Email | Email PH | Lop
-    # Format cu:  Ho ten | Email | Email PH | Lop
+    # Phat hien co cot STT o dau khong (header row 1)
     headers = [str(c.value).strip().lower() if c.value else "" for c in ws[1]]
-    has_stt = headers and (headers[0] in ("stt", "số thứ tự", "so thu tu", "tt") or
-                           (ws.cell(2, 1).value is not None and str(ws.cell(2, 1).value).strip().lstrip("0123456789.") == ""))
+    has_stt = bool(headers) and (headers[0] in ("stt", "số thứ tự", "so thu tu", "tt") or
+                                  (ws.cell(2, 1).value is not None and
+                                   str(ws.cell(2, 1).value).strip().lstrip("0123456789.") == ""))
+
+    # Format GV: STT | Ho ten | Email | Lop CN | Si so
+    # Format HS: STT | Ho ten | Email HS | Email PH | Lop
+    # (khi khong co STT, dich trai 1 cot)
 
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if not row or all(v is None or str(v).strip() == "" for v in row):
             continue
         try:
-            if has_stt:
-                stt_val = row[0]
-                stt = int(float(str(stt_val))) if stt_val is not None else i - 1
-                ho_ten = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-                email = str(row[2]).strip() if len(row) > 2 and row[2] else ""
-                email_ph = str(row[3]).strip() if len(row) > 3 and row[3] and str(row[3]).strip() != "None" else None
-                lop = str(row[4]).strip() if len(row) > 4 and row[4] else ten_lop_mac_dinh
+            offset = 1 if has_stt else 0
+            stt_val = row[0] if has_stt else None
+            stt = int(float(str(stt_val))) if stt_val is not None else i - 1
+
+            def _s(idx: int) -> str:
+                return str(row[offset + idx]).strip() if len(row) > offset + idx and row[offset + idx] else ""
+
+            ho_ten = _s(0)
+            email = _s(1)
+
+            if vai_tro == "giao_vien":
+                lop = _s(2) or ten_lop_mac_dinh
+                si_so_str = _s(3)
+                si_so = int(float(si_so_str)) if si_so_str else None
+                email_ph = None
             else:
-                stt = i - 1
-                ho_ten = str(row[0]).strip() if row[0] else ""
-                email = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-                email_ph = str(row[2]).strip() if len(row) > 2 and row[2] and str(row[2]).strip() != "None" else None
-                lop = str(row[3]).strip() if len(row) > 3 and row[3] else ten_lop_mac_dinh
+                email_ph = _s(2) or None
+                if email_ph == "None": email_ph = None
+                lop = _s(3) or ten_lop_mac_dinh
+                si_so = None
 
             if not ho_ten:
                 loi.append(f"Dong {i}: Thieu ho ten")
@@ -112,7 +122,7 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
             if not email or "@" not in email:
                 loi.append(f"Dong {i}: Email khong hop le: '{email}'")
                 continue
-            if not lop:
+            if vai_tro != "giao_vien" and not lop:
                 loi.append(f"Dong {i}: Khong xac dinh duoc lop (GV chua duoc phan lop)")
                 continue
 
@@ -121,17 +131,20 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
                 loi.append(f"Dong {i}: Email '{email}' da ton tai")
                 continue
 
-            supabase.table("nguoi_dung").insert({
+            record: dict = {
                 "ho_ten": ho_ten,
                 "email": email,
                 "email_phu_huynh": email_ph,
-                "ten_lop": lop,
+                "ten_lop": lop or None,
                 "vai_tro": vai_tro,
                 "so_thu_tu": stt,
                 "mat_khau_hash": hash_mat_khau(MAT_KHAU_MAC_DINH),
                 "bat_buoc_doi_mat_khau": True,
-                "dang_hoat_dong": True
-            }).execute()
+                "dang_hoat_dong": True,
+            }
+            if si_so is not None:
+                record["si_so"] = si_so
+            supabase.table("nguoi_dung").insert(record).execute()
             thanh_cong += 1
         except Exception as e:
             loi.append(f"Dong {i}: {str(e)[:120]}")
