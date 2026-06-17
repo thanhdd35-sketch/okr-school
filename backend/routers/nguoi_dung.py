@@ -81,50 +81,56 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
     thanh_cong = 0
     loi = []
 
-    # Phat hien co cot STT o dau khong
-    # Cach 1: header cot A la "STT"
-    h1 = str(ws.cell(1, 1).value or "").strip().upper()
-    has_stt = h1 in ("STT", "SỐ THỨ TỰ", "SO THU TU", "TT", "NO", "#")
-    # Cach 2: cell A2 la so nguyen
-    if not has_stt:
-        v = ws.cell(2, 1).value
-        if isinstance(v, (int, float)):
-            has_stt = True
-        elif v is not None:
-            try:
-                int(str(v).strip())
-                has_stt = True
-            except (ValueError, TypeError):
-                pass
+    # Tim cot email bang cach scan du lieu thuc te (khong doan tu header)
+    # Scan toi da 5 dong dau de tim cot nao chua "@"
+    email_col_idx = None
+    for scan_row in ws.iter_rows(min_row=2, max_row=min(6, ws.max_row), values_only=True):
+        if not scan_row: continue
+        for ci, val in enumerate(scan_row):
+            if val and "@" in str(val):
+                email_col_idx = ci
+                break
+        if email_col_idx is not None:
+            break
 
-    # Format GV: STT | Ho ten | Email | Lop CN | Si so
-    # Format HS: STT | Ho ten | Email HS | Email PH | Lop
-    # (khi khong co STT, dich trai 1 cot)
+    if email_col_idx is None:
+        raise HTTPException(status_code=400, detail="Khong tim thay cot email trong file. Kiem tra lai dinh dang file.")
+
+    # offset = so cot truoc cot email (= 1 neu co STT, = 0 neu khong co STT)
+    # Cot ho_ten = email_col_idx - 1
+    # Cot STT    = email_col_idx - 2 (neu co)
+    has_stt = email_col_idx >= 2
+    offset = email_col_idx - 1  # vi tri bat dau cua ho_ten
 
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if not row or all(v is None or str(v).strip() == "" for v in row):
             continue
         try:
-            offset = 1 if has_stt else 0
-            stt_val = row[0] if has_stt else None
-            stt = int(float(str(stt_val))) if stt_val is not None else i - 1
+            # STT
+            if has_stt and row[0] is not None:
+                try:
+                    stt = int(float(str(row[0]).strip()))
+                except (ValueError, TypeError):
+                    stt = i - 1
+            else:
+                stt = i - 1
 
-            def _s(idx: int) -> str:
-                return str(row[offset + idx]).strip() if len(row) > offset + idx and row[offset + idx] else ""
+            def _get(ci: int) -> str:
+                return str(row[ci]).strip() if len(row) > ci and row[ci] is not None and str(row[ci]).strip() else ""
 
-            ho_ten = _s(0)
-            email = _s(1)
+            ho_ten = _get(offset)
+            email  = _get(email_col_idx)
 
             if vai_tro == "giao_vien":
-                lop = _s(2) or ten_lop_mac_dinh
-                si_so_str = _s(3)
-                si_so = int(float(si_so_str)) if si_so_str else None
-                email_ph = None
+                lop       = _get(email_col_idx + 1) or ten_lop_mac_dinh
+                si_so_str = _get(email_col_idx + 2)
+                si_so     = int(float(si_so_str)) if si_so_str else None
+                email_ph  = None
             else:
-                email_ph = _s(2) or None
-                if email_ph == "None": email_ph = None
-                lop = _s(3) or ten_lop_mac_dinh
-                si_so = None
+                email_ph = _get(email_col_idx + 1) or None
+                if email_ph in ("None", ""): email_ph = None
+                lop      = _get(email_col_idx + 2) or ten_lop_mac_dinh
+                si_so    = None
 
             if not ho_ten:
                 loi.append(f"Dong {i}: Thieu ho ten")
