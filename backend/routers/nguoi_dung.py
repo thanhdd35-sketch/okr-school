@@ -199,12 +199,15 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
 class CapNhatHocSinh(BaseModel):
     ho_ten: Optional[str] = None
     email: Optional[str] = None
+    email_phu_huynh: Optional[str] = None
 
 @router.put("/hoc-sinh/{id}")
 def cap_nhat_hoc_sinh(id: str, body: CapNhatHocSinh, nguoi_dung=Depends(chi_giao_vien)):
     data = {}
-    if body.ho_ten: data["ho_ten"] = body.ho_ten
-    if body.email: data["email"] = body.email
+    if body.ho_ten is not None: data["ho_ten"] = body.ho_ten
+    if body.email is not None: data["email"] = body.email
+    if body.email_phu_huynh is not None:
+        data["email_phu_huynh"] = body.email_phu_huynh.strip() or None
     if not data:
         raise HTTPException(status_code=400, detail="Khong co du lieu de cap nhat")
     res = supabase.table("nguoi_dung").update(data).eq("id", id).eq("vai_tro", "hoc_sinh").execute()
