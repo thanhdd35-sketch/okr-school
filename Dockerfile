@@ -6,10 +6,10 @@ WORKDIR /app
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Giu nguyen cau truc backend/ de khop startCommand "cd backend && uvicorn"
+# Giu nguyen cau truc backend/
 COPY backend/ ./backend/
 
 WORKDIR /app/backend
 
-# Railway cung cap bien $PORT luc runtime
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+# $PORT do Railway cung cap; default 8000 neu thieu (tranh loi bind -> 502)
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
