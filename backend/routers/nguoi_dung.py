@@ -25,11 +25,11 @@ class ThemGiaoVien(BaseModel):
 @router.get("/hoc-sinh/{ten_lop}")
 def danh_sach_hoc_sinh(ten_lop: str, nguoi_dung=Depends(chi_giao_vien)):
     # Thu exact match truoc
-    res = supabase.table("nguoi_dung").select("id, ho_ten, email, email_phu_huynh, ten_lop, so_thu_tu, dang_hoat_dong, ngay_tao").eq("ten_lop", ten_lop).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).order("ho_ten").execute()
+    res = supabase.table("nguoi_dung").select("id, ho_ten, email, email_phu_huynh, ten_lop, so_thu_tu, dang_hoat_dong, ngay_tao").eq("ten_lop", ten_lop).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).order("so_thu_tu").execute()
     if res.data:
         return res.data
     # Fallback: tim khong phan biet hoa thuong va khoang trang
-    res2 = supabase.table("nguoi_dung").select("id, ho_ten, email, email_phu_huynh, ten_lop, so_thu_tu, dang_hoat_dong, ngay_tao").ilike("ten_lop", ten_lop.strip()).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).order("ho_ten").execute()
+    res2 = supabase.table("nguoi_dung").select("id, ho_ten, email, email_phu_huynh, ten_lop, so_thu_tu, dang_hoat_dong, ngay_tao").ilike("ten_lop", ten_lop.strip()).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).order("so_thu_tu").execute()
     return res2.data
 
 @router.get("/tat-ca-hoc-sinh")
