@@ -157,9 +157,23 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
                 loi.append(f"Dong {i}: Khong xac dinh duoc lop (GV chua duoc phan lop)")
                 continue
 
-            kiem_tra = supabase.table("nguoi_dung").select("id").eq("email", email).execute()
+            kiem_tra = supabase.table("nguoi_dung").select("id, dang_hoat_dong").eq("email", email).execute()
             if kiem_tra.data:
-                loi.append(f"Dong {i}: Email '{email}' da ton tai")
+                cu = kiem_tra.data[0]
+                if not cu.get("dang_hoat_dong", True):
+                    # Email ton tai nhung dang bi vo hieu hoa -> kich hoat lai + cap nhat thong tin
+                    capnhat = {
+                        "ho_ten": ho_ten,
+                        "ten_lop": lop or None,
+                        "so_thu_tu": stt,
+                        "dang_hoat_dong": True,
+                    }
+                    if email_ph is not None:
+                        capnhat["email_phu_huynh"] = email_ph
+                    supabase.table("nguoi_dung").update(capnhat).eq("id", cu["id"]).execute()
+                    thanh_cong += 1
+                else:
+                    loi.append(f"Dong {i}: Email '{email}' da ton tai")
                 continue
 
             record: dict = {
