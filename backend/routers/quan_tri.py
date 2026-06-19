@@ -14,6 +14,8 @@ class TaoGiaoVien(BaseModel):
     mat_khau: str
     ten_lop: Optional[str] = None
     si_so: Optional[int] = None
+    la_truong_khoi: Optional[bool] = False
+    khoi_phu_trach: Optional[str] = None
 
 class TaoHocSinh(BaseModel):
     ho_ten: str
@@ -28,6 +30,8 @@ class CapNhatNguoiDung(BaseModel):
     si_so: Optional[int] = None
     mat_khau: Optional[str] = None
     dang_hoat_dong: Optional[bool] = None
+    la_truong_khoi: Optional[bool] = None
+    khoi_phu_trach: Optional[str] = None
 
 # ── Thống kê ────────────────────────────────────────────
 @router.get("/thong-ke-tong-quan")
@@ -105,6 +109,8 @@ def tao_giao_vien(body: TaoGiaoVien, nguoi_dung=Depends(chi_quan_tri)):
     }
     if body.ten_lop: data["ten_lop"] = body.ten_lop
     if body.si_so: data["si_so"] = body.si_so
+    data["la_truong_khoi"] = bool(body.la_truong_khoi)
+    data["khoi_phu_trach"] = body.khoi_phu_trach if body.la_truong_khoi else None
 
     res = supabase.table("nguoi_dung").insert(data).execute()
     return res.data[0]
@@ -139,6 +145,9 @@ def cap_nhat_nguoi_dung(id: str, body: CapNhatNguoiDung, nguoi_dung=Depends(chi_
     if body.ten_lop is not None: data["ten_lop"] = body.ten_lop
     if body.si_so is not None: data["si_so"] = body.si_so
     if body.dang_hoat_dong is not None: data["dang_hoat_dong"] = body.dang_hoat_dong
+    if body.la_truong_khoi is not None:
+        data["la_truong_khoi"] = body.la_truong_khoi
+        data["khoi_phu_trach"] = body.khoi_phu_trach if body.la_truong_khoi else None
     if body.mat_khau:
         data["mat_khau_hash"] = bcrypt.hashpw(body.mat_khau.encode(), bcrypt.gensalt()).decode()
         data["bat_buoc_doi_mat_khau"] = True
