@@ -41,7 +41,10 @@ def dang_nhap(body: DangNhapBody, request: Request):
         "email": user["email"],
         "vai_tro": user["vai_tro"],
         "ho_ten": user["ho_ten"],
-        "ten_lop": user.get("ten_lop")
+        "ten_lop": user.get("ten_lop"),
+        "la_truong_khoi": user.get("la_truong_khoi", False),
+        "khoi_phu_trach": user.get("khoi_phu_trach"),
+        "khoi": user.get("khoi"),
     })
 
     return {
@@ -50,6 +53,9 @@ def dang_nhap(body: DangNhapBody, request: Request):
         "vai_tro": user["vai_tro"],
         "ho_ten": user["ho_ten"],
         "ten_lop": user.get("ten_lop"),
+        "la_truong_khoi": user.get("la_truong_khoi", False),
+        "khoi_phu_trach": user.get("khoi_phu_trach"),
+        "khoi": user.get("khoi"),
         "id": user["id"]
     }
 

@@ -53,6 +53,35 @@ def chi_giao_vien(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
         raise HTTPException(status_code=403, detail="Chi giao vien moi co quyen nay")
     return nguoi_dung
 
+def chi_pho_ht_tro_len(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    """Pho Hieu truong hoac Quan tri vien — dat OKR truong, xem moi khoi."""
+    if nguoi_dung.get("vai_tro") not in ["quan_tri", "pho_hieu_truong"]:
+        raise HTTPException(status_code=403, detail="Chi Pho Hieu truong hoac Quan tri vien")
+    return nguoi_dung
+
+def require_truong_khoi(khoi: str):
+    """Truong khoi cua dung khoi do (hoac Pho HT / QTV)."""
+    def checker(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+        vt = nguoi_dung.get("vai_tro")
+        if vt in ("quan_tri", "pho_hieu_truong"):
+            return nguoi_dung
+        if vt == "giao_vien" and nguoi_dung.get("la_truong_khoi") \
+           and str(nguoi_dung.get("khoi_phu_trach")) == str(khoi):
+            return nguoi_dung
+        raise HTTPException(status_code=403, detail=f"Chi Truong khoi {khoi} moi co quyen nay")
+    return checker
+
+def require_gvcn_cua_lop(lop: str):
+    """GVCN cua dung lop do (dung ten_lop). Pho HT / QTV cung qua."""
+    def checker(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+        vt = nguoi_dung.get("vai_tro")
+        if vt in ("quan_tri", "pho_hieu_truong"):
+            return nguoi_dung
+        if vt == "giao_vien" and str(nguoi_dung.get("ten_lop")) == str(lop):
+            return nguoi_dung
+        raise HTTPException(status_code=403, detail=f"Chi GVCN lop {lop} moi co quyen nay")
+    return checker
+
 def kiem_tra_gioi_han_dang_nhap(ip: str):
     now = datetime.now()
     if ip in login_attempts:
