@@ -84,7 +84,7 @@ def thong_ke_tong_quan(ky_id: Optional[str] = None, nguoi_dung=Depends(chi_quan_
 # ── Danh sách người dùng ────────────────────────────────
 @router.get("/danh-sach-nguoi-dung")
 def danh_sach_nguoi_dung(vai_tro: Optional[str] = None, nguoi_dung=Depends(chi_quan_tri)):
-    query = supabase.table("nguoi_dung").select("id, ho_ten, email, vai_tro, ten_lop, si_so, email_phu_huynh, dang_hoat_dong, ngay_tao")
+    query = supabase.table("nguoi_dung").select("id, ho_ten, email, vai_tro, ten_lop, si_so, email_phu_huynh, dang_hoat_dong, ngay_tao, la_truong_khoi, khoi_phu_trach, khoi")
     if vai_tro:
         query = query.eq("vai_tro", vai_tro)
     query = query.neq("vai_tro", "quan_tri").eq("dang_hoat_dong", True).order("ho_ten")

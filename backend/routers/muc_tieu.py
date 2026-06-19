@@ -170,7 +170,12 @@ def xoa_muc_tieu(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     if not mt.data:
         raise HTTPException(status_code=404, detail="Khong tim thay")
     muc_tieu = mt.data[0]
-    if nguoi_dung["vai_tro"] == "hoc_sinh":
+    vt = nguoi_dung["vai_tro"]
+    # Pho HT / Quan tri: xoa truc tiep khong can thong qua ai
+    if vt in ("pho_hieu_truong", "quan_tri"):
+        supabase.table("muc_tieu").delete().eq("id", id).execute()
+        return {"message": "Da xoa"}
+    if vt == "hoc_sinh":
         if muc_tieu["hoc_sinh_id"] != nguoi_dung["id"]:
             raise HTTPException(status_code=403, detail="Khong co quyen")
         if muc_tieu["trang_thai"] not in ["nhap", "yeu_cau_sua"]:

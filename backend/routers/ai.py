@@ -48,14 +48,20 @@ Cac ghi chu cap nhat: {'; '.join(ghi_chu_list) if ghi_chu_list else 'Khong co gh
 Yeu cau: viet nhan xet 3-4 cau, khuyen khich, thuc te, de cap con so cu the, phu hop van phong hoc ba THPT Viet Nam.
 Chi tra ve doan nhan xet, khong them noi dung khac."""
 
-    client = lay_client_ai()
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=300,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    return {"nhan_xet": message.content[0].text}
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise HTTPException(status_code=503, detail="AI chua duoc cau hinh")
+    try:
+        client = lay_client_ai()
+        message = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return {"nhan_xet": message.content[0].text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Loi goi AI: {str(e)[:150]}")
 
 @router.post("/goi-y-kr")
 def goi_y_kr(body: GoiYKRBody, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
@@ -74,7 +80,7 @@ Chi tra ve 3 dong goi y, khong them gi khac."""
 
     client = lay_client_ai()
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5",
         max_tokens=200,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -109,7 +115,7 @@ Chi tra ve doan tom tat, khong them gi khac."""
 
     client = lay_client_ai()
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5",
         max_tokens=300,
         messages=[{"role": "user", "content": prompt}]
     )
