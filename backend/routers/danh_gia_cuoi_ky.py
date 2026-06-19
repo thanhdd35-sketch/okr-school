@@ -16,6 +16,31 @@ class CapNhatNhanXet(BaseModel):
 class YKienPhuHuynh(BaseModel):
     phan_hoi_ph: str
 
+class TuDanhGiaHS(BaseModel):
+    hs_nhin_lai_hanh_trinh: str
+    hs_cam_nhan_ca_nhan: str
+    hs_bai_hoc_rut_ra: str
+    hs_cam_ket_cai_tien: str
+
+@router.post("/hs/tu-danh-gia/{ky_id}")
+def hs_tu_danh_gia(ky_id: str, body: TuDanhGiaHS, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    if nguoi_dung.get("vai_tro") != "hoc_sinh":
+        raise HTTPException(status_code=403, detail="Chi hoc sinh moi tu danh gia")
+    hs_id = nguoi_dung["id"]
+    data = {
+        "hs_nhin_lai_hanh_trinh": body.hs_nhin_lai_hanh_trinh,
+        "hs_cam_nhan_ca_nhan": body.hs_cam_nhan_ca_nhan,
+        "hs_bai_hoc_rut_ra": body.hs_bai_hoc_rut_ra,
+        "hs_cam_ket_cai_tien": body.hs_cam_ket_cai_tien,
+        "hs_da_tu_danh_gia": True,
+    }
+    res = supabase.table("danh_gia_cuoi_ky").select("id").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
+    if res.data:
+        supabase.table("danh_gia_cuoi_ky").update(data).eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
+    else:
+        supabase.table("danh_gia_cuoi_ky").insert({"hoc_sinh_id": hs_id, "ky_danh_gia_id": ky_id, **data}).execute()
+    return {"message": "Da luu tu danh gia cuoi ky"}
+
 @router.get("/{hs_id}")
 def xem_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
@@ -44,6 +69,10 @@ def cap_nhat_nhan_xet(hs_id: str, ky_id: str, body: CapNhatNhanXet, nguoi_dung=D
 @router.post("/{hs_id}/hoan-tat")
 def hoan_tat_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(chi_giao_vien)):
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
+    # Chan: GVCN chi hoan tat khi HS da tu danh gia
+    if not (res.data and res.data[0].get("hs_da_tu_danh_gia")):
+        raise HTTPException(status_code=400,
+            detail="Hoc sinh chua hoan thanh tu danh gia cuoi ky. Vui long cho hoc sinh dien phan tu.")
     thoi_diem = datetime.now(timezone.utc).isoformat()
 
     if res.data:
