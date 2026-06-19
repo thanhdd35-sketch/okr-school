@@ -16,6 +16,7 @@ class TaoGiaoVien(BaseModel):
     si_so: Optional[int] = None
     la_truong_khoi: Optional[bool] = False
     khoi_phu_trach: Optional[str] = None
+    vai_tro: Optional[str] = "giao_vien"  # giao_vien | pho_hieu_truong
 
 class TaoHocSinh(BaseModel):
     ho_ten: str
@@ -98,19 +99,21 @@ def tao_giao_vien(body: TaoGiaoVien, nguoi_dung=Depends(chi_quan_tri)):
     if kiem_tra.data:
         raise HTTPException(status_code=400, detail="Email nay da duoc su dung")
 
+    vai_tro = body.vai_tro if body.vai_tro in ("giao_vien", "pho_hieu_truong") else "giao_vien"
     hash_pw = bcrypt.hashpw(body.mat_khau.encode(), bcrypt.gensalt()).decode()
     data = {
         "ho_ten": body.ho_ten,
         "email": body.email,
         "mat_khau_hash": hash_pw,
-        "vai_tro": "giao_vien",
+        "vai_tro": vai_tro,
         "dang_hoat_dong": True,
         "bat_buoc_doi_mat_khau": True,
     }
-    if body.ten_lop: data["ten_lop"] = body.ten_lop
-    if body.si_so: data["si_so"] = body.si_so
-    data["la_truong_khoi"] = bool(body.la_truong_khoi)
-    data["khoi_phu_trach"] = body.khoi_phu_trach if body.la_truong_khoi else None
+    if vai_tro == "giao_vien":
+        if body.ten_lop: data["ten_lop"] = body.ten_lop
+        if body.si_so: data["si_so"] = body.si_so
+        data["la_truong_khoi"] = bool(body.la_truong_khoi)
+        data["khoi_phu_trach"] = body.khoi_phu_trach if body.la_truong_khoi else None
 
     res = supabase.table("nguoi_dung").insert(data).execute()
     return res.data[0]

@@ -16,6 +16,8 @@ class TaoMucTieu(BaseModel):
     cau_chuyen: Optional[str] = None
     han_hoan_thanh: Optional[date] = None
     la_nhap: Optional[bool] = True
+    tro_ngai_du_doan: Optional[str] = None
+    ke_hoach_vuot_qua: Optional[str] = None
 
 class SuaMucTieu(BaseModel):
     muc_tieu_lon: Optional[str] = None
@@ -24,6 +26,8 @@ class SuaMucTieu(BaseModel):
     cau_chuyen: Optional[str] = None
     han_hoan_thanh: Optional[date] = None
     loai_okr: Optional[str] = None
+    tro_ngai_du_doan: Optional[str] = None
+    ke_hoach_vuot_qua: Optional[str] = None
 
 class NopOKR(BaseModel):
     ket_qua_checklist_hs: Optional[dict] = None
@@ -100,6 +104,10 @@ def tao_muc_tieu(body: TaoMucTieu, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
         optional_fields["cau_chuyen"] = body.cau_chuyen
     if body.han_hoan_thanh:
         optional_fields["han_hoan_thanh"] = body.han_hoan_thanh.isoformat()
+    if body.tro_ngai_du_doan:
+        optional_fields["tro_ngai_du_doan"] = body.tro_ngai_du_doan
+    if body.ke_hoach_vuot_qua:
+        optional_fields["ke_hoach_vuot_qua"] = body.ke_hoach_vuot_qua
 
     try:
         res = supabase.table("muc_tieu").insert({**data, **optional_fields}).execute()
