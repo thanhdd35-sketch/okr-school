@@ -89,7 +89,9 @@ def dang_nhap_phu_huynh(body: DangNhapPhuHuynh, request: Request):
         "token": token,
         "vai_tro": "phu_huynh",
         "ho_ten_con": hoc_sinh["ho_ten"],
-        "lop": hoc_sinh.get("ten_lop")
+        "lop": hoc_sinh.get("ten_lop"),
+        "hoc_sinh_id": hoc_sinh["id"],
+        "id": hoc_sinh["id"],
     }
 
 @router.post("/doi-mat-khau")
