@@ -136,11 +136,17 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
             ho_ten = _get(offset)
             email  = _get(email_col_idx)
 
+            gioi_tinh = None
             if vai_tro == "giao_vien":
                 lop       = _get(email_col_idx + 1) or ten_lop_mac_dinh
                 si_so_str = _get(email_col_idx + 2)
                 si_so     = int(float(si_so_str)) if si_so_str else None
                 email_ph  = None
+                gt_raw = _get(email_col_idx + 3).lower()
+                if gt_raw in ("nam", "male", "m", "thay", "thầy"):
+                    gioi_tinh = "nam"
+                elif gt_raw in ("nu", "nữ", "female", "f", "co", "cô"):
+                    gioi_tinh = "nu"
             else:
                 email_ph = _get(email_col_idx + 1) or None
                 if email_ph in ("None", ""): email_ph = None
@@ -189,7 +195,13 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
             }
             if si_so is not None:
                 record["si_so"] = si_so
-            supabase.table("nguoi_dung").insert(record).execute()
+            if gioi_tinh is not None:
+                record["gioi_tinh"] = gioi_tinh
+            try:
+                supabase.table("nguoi_dung").insert(record).execute()
+            except Exception:
+                record.pop("gioi_tinh", None)
+                supabase.table("nguoi_dung").insert(record).execute()
             thanh_cong += 1
         except Exception as e:
             loi.append(f"Dong {i}: {str(e)[:120]}")
