@@ -138,6 +138,29 @@ def danh_sach_okr_lop(lop: str, ky_id: Optional[str] = None, nguoi_dung=Depends(
     return q.order("ngay_tao", desc=True).execute().data
 
 
+class BaoCaoBody(BaseModel):
+    ket_qua_then_chot: List[Any]   # KR da cap nhat gia_tri_hien_tai + ngay_du_lieu
+    tien_do: float
+    nhan_xet: Optional[str] = None
+    loai_bao_cao: Optional[str] = None  # trong_ky | hoan_thanh
+
+@router.put("/{id}/bao-cao")
+def bao_cao_okr(id: str, body: BaoCaoBody, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    cur = supabase.table("okr_to_chuc").select("nguoi_tao_id").eq("id", id).execute()
+    if not cur.data:
+        raise HTTPException(404, "Khong tim thay OKR")
+    if nguoi_dung.get("vai_tro") not in ("pho_hieu_truong", "quan_tri") \
+       and cur.data[0].get("nguoi_tao_id") != nguoi_dung["id"]:
+        raise HTTPException(403, "Khong co quyen bao cao OKR nay")
+    data = {
+        "ket_qua_then_chot": body.ket_qua_then_chot,
+        "tien_do": body.tien_do,
+        "nhan_xet_cuoi_ky": body.nhan_xet,
+        "ngay_cap_nhat": datetime.now(timezone.utc).isoformat(),
+    }
+    res = supabase.table("okr_to_chuc").update(data).eq("id", id).execute()
+    return res.data[0] if res.data else {"message": "ok"}
+
 @router.delete("/{id}")
 def xoa_okr(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     # PHT/QTV xoa bat ky; nguoi tao xoa OKR cua minh
