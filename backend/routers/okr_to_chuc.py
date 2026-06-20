@@ -4,7 +4,7 @@ from typing import Optional, List, Any
 from datetime import datetime, timezone
 from database import supabase
 from auth import (lay_nguoi_dung_hien_tai, chi_pho_ht_tro_len,
-                  require_truong_khoi)
+                  require_truong_khoi, require_gvcn_cua_lop)
 
 router = APIRouter()
 
@@ -108,8 +108,44 @@ def sua_okr_khoi(khoi: str, id: str, body: OKRToChucBody, nguoi_dung=Depends(lay
     return res.data[0]
 
 
+# ---------- OKR cấp LỚP (GVCN đặt) ----------
+@router.post("/lop/{lop}")
+def tao_okr_lop(lop: str, body: OKRToChucBody, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    require_gvcn_cua_lop(lop)(nguoi_dung)
+    data = {
+        "cap_okr": "lop", "lop": lop,
+        "muc_tieu_lon": body.muc_tieu_lon,
+        "ket_qua_then_chot": body.ket_qua_then_chot,
+        "mo_ta": body.mo_ta,
+        "ky_danh_gia_id": body.ky_danh_gia_id,
+        "nguoi_tao_id": nguoi_dung["id"],
+    }
+    _them_field_mo_rong(data, body)
+    try:
+        res = supabase.table("okr_to_chuc").insert(data).execute()
+    except Exception:
+        for k in ["han_hoan_thanh", "tien_do", "minh_chung_url", "nhan_xet_cuoi_ky"]:
+            data.pop(k, None)
+        res = supabase.table("okr_to_chuc").insert(data).execute()
+    return res.data[0]
+
+
+@router.get("/lop/{lop}")
+def danh_sach_okr_lop(lop: str, ky_id: Optional[str] = None, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    q = supabase.table("okr_to_chuc").select("*").eq("cap_okr", "lop").eq("lop", lop).eq("trang_thai", "hoat_dong")
+    if ky_id:
+        q = q.eq("ky_danh_gia_id", ky_id)
+    return q.order("ngay_tao", desc=True).execute().data
+
+
 @router.delete("/{id}")
-def xoa_okr(id: str, nguoi_dung=Depends(chi_pho_ht_tro_len)):
-    # Xoa that su (khong phai an)
+def xoa_okr(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    # PHT/QTV xoa bat ky; nguoi tao xoa OKR cua minh
+    cur = supabase.table("okr_to_chuc").select("nguoi_tao_id").eq("id", id).execute()
+    if not cur.data:
+        raise HTTPException(404, "Khong tim thay OKR")
+    if nguoi_dung.get("vai_tro") not in ("pho_hieu_truong", "quan_tri") \
+       and cur.data[0].get("nguoi_tao_id") != nguoi_dung["id"]:
+        raise HTTPException(403, "Khong co quyen xoa OKR nay")
     supabase.table("okr_to_chuc").delete().eq("id", id).execute()
     return {"message": "Da xoa OKR"}
