@@ -40,13 +40,16 @@ def tao_nhan_xet(body: TaoNhanXetBody, nguoi_dung=Depends(chi_giao_vien)):
     muc_tieu = mt.data[0]
     ghi_chu_list = [l["ghi_chu"] for l in lich_su.data if l.get("ghi_chu")]
 
-    prompt = f"""Ban la giao vien chu nhiem THPT dang viet nhan xet cuoi hoc ky.
+    # Xung ho theo gioi tinh GV: nam -> thay, nu -> co
+    gv_info = supabase.table("nguoi_dung").select("gioi_tinh").eq("id", nguoi_dung["id"]).execute()
+    gt = gv_info.data[0].get("gioi_tinh") if gv_info.data else None
+    xung_ho = "thay" if gt == "nam" else "co" if gt == "nu" else "thay/co"
+
+    prompt = f"""Ban la giao vien chu nhiem THPT, xung "{xung_ho}", dang viet nhan xet cuoi hoc ky.
 Hoc sinh: {ho_ten}. Muc tieu: {muc_tieu['muc_tieu_lon']}.
 Ket qua then chot: {muc_tieu['ket_qua_then_chot']} — dat {muc_tieu['tien_do_phan_tram']}%.
-Chi tieu: {muc_tieu['chi_tieu']} {muc_tieu['don_vi']}, Thuc dat: {muc_tieu['thuc_dat']} {muc_tieu['don_vi']}.
-Cac ghi chu cap nhat: {'; '.join(ghi_chu_list) if ghi_chu_list else 'Khong co ghi chu'}.
-Yeu cau: viet nhan xet 3-4 cau, khuyen khich, thuc te, de cap con so cu the, phu hop van phong hoc ba THPT Viet Nam.
-Chi tra ve doan nhan xet, khong them noi dung khac."""
+Yeu cau: viet nhan xet NGAN GON DUOI 200 ky tu, khuyen khich, co con so cu the, xung "{xung_ho}".
+Chi tra ve doan nhan xet, khong them gi khac."""
 
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise HTTPException(status_code=503, detail="AI chua duoc cau hinh")
@@ -54,10 +57,13 @@ Chi tra ve doan nhan xet, khong them noi dung khac."""
         client = lay_client_ai()
         message = client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=300,
+            max_tokens=150,
             messages=[{"role": "user", "content": prompt}]
         )
-        return {"nhan_xet": message.content[0].text}
+        txt = message.content[0].text.strip()
+        if len(txt) > 200:
+            txt = txt[:197].rsplit(" ", 1)[0] + "..."
+        return {"nhan_xet": txt}
     except HTTPException:
         raise
     except Exception as e:

@@ -183,6 +183,33 @@ def xoa_muc_tieu(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     supabase.table("muc_tieu").delete().eq("id", id).execute()
     return {"message": "Da xoa"}
 
+class DanhGiaPH(BaseModel):
+    diem: Optional[int] = None
+    binh_luan: Optional[str] = None
+
+@router.put("/{id}/danh-gia")
+def phu_huynh_danh_gia(id: str, body: DanhGiaPH, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    if nguoi_dung.get("vai_tro") != "phu_huynh":
+        raise HTTPException(status_code=403, detail="Chi phu huynh moi danh gia")
+    data = {}
+    if body.diem is not None:
+        data["diem_phu_huynh"] = body.diem
+    if body.binh_luan is not None:
+        data["binh_luan_phu_huynh"] = body.binh_luan
+    if not data:
+        raise HTTPException(status_code=400, detail="Khong co du lieu")
+    try:
+        res = supabase.table("muc_tieu").update(data).eq("id", id).execute()
+    except Exception:
+        # Neu cot binh_luan_phu_huynh chua ton tai (chua chay migration v2.4)
+        if "diem_phu_huynh" in data:
+            res = supabase.table("muc_tieu").update({"diem_phu_huynh": data["diem_phu_huynh"]}).eq("id", id).execute()
+        else:
+            raise HTTPException(status_code=500, detail="Chua chay migration v2.4")
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Khong tim thay muc tieu")
+    return res.data[0]
+
 @router.post("/{id}/xin-xoa")
 def xin_xoa(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     if nguoi_dung["vai_tro"] != "hoc_sinh":

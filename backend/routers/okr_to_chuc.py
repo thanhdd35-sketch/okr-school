@@ -16,6 +16,16 @@ class OKRToChucBody(BaseModel):
     ky_danh_gia_id: Optional[str] = None
     khoi: Optional[str] = None
     lop: Optional[str] = None
+    han_hoan_thanh: Optional[str] = None
+    tien_do: Optional[float] = None
+    minh_chung_url: Optional[str] = None
+    nhan_xet_cuoi_ky: Optional[str] = None
+
+def _them_field_mo_rong(data: dict, body: "OKRToChucBody"):
+    if body.han_hoan_thanh: data["han_hoan_thanh"] = body.han_hoan_thanh
+    if body.tien_do is not None: data["tien_do"] = body.tien_do
+    if body.minh_chung_url is not None: data["minh_chung_url"] = body.minh_chung_url
+    if body.nhan_xet_cuoi_ky is not None: data["nhan_xet_cuoi_ky"] = body.nhan_xet_cuoi_ky
 
 
 # ---------- OKR cấp TRƯỜNG ----------
@@ -29,7 +39,13 @@ def tao_okr_truong(body: OKRToChucBody, nguoi_dung=Depends(chi_pho_ht_tro_len)):
         "ky_danh_gia_id": body.ky_danh_gia_id,
         "nguoi_tao_id": nguoi_dung["id"],
     }
-    res = supabase.table("okr_to_chuc").insert(data).execute()
+    _them_field_mo_rong(data, body)
+    try:
+        res = supabase.table("okr_to_chuc").insert(data).execute()
+    except Exception:
+        for k in ["han_hoan_thanh", "tien_do", "minh_chung_url", "nhan_xet_cuoi_ky"]:
+            data.pop(k, None)
+        res = supabase.table("okr_to_chuc").insert(data).execute()
     return res.data[0]
 
 
@@ -45,7 +61,13 @@ def danh_sach_okr_truong(ky_id: Optional[str] = None, nguoi_dung=Depends(lay_ngu
 def sua_okr_truong(id: str, body: OKRToChucBody, nguoi_dung=Depends(chi_pho_ht_tro_len)):
     data = {"muc_tieu_lon": body.muc_tieu_lon, "ket_qua_then_chot": body.ket_qua_then_chot,
             "mo_ta": body.mo_ta, "ngay_cap_nhat": datetime.now(timezone.utc).isoformat()}
-    res = supabase.table("okr_to_chuc").update(data).eq("id", id).eq("cap_okr", "truong").execute()
+    _them_field_mo_rong(data, body)
+    try:
+        res = supabase.table("okr_to_chuc").update(data).eq("id", id).eq("cap_okr", "truong").execute()
+    except Exception:
+        for k in ["han_hoan_thanh", "tien_do", "minh_chung_url", "nhan_xet_cuoi_ky"]:
+            data.pop(k, None)
+        res = supabase.table("okr_to_chuc").update(data).eq("id", id).eq("cap_okr", "truong").execute()
     if not res.data:
         raise HTTPException(404, "Khong tim thay OKR truong")
     return res.data[0]
@@ -87,6 +109,7 @@ def sua_okr_khoi(khoi: str, id: str, body: OKRToChucBody, nguoi_dung=Depends(lay
 
 
 @router.delete("/{id}")
-def an_okr(id: str, nguoi_dung=Depends(chi_pho_ht_tro_len)):
-    supabase.table("okr_to_chuc").update({"trang_thai": "an"}).eq("id", id).execute()
-    return {"message": "Da an OKR"}
+def xoa_okr(id: str, nguoi_dung=Depends(chi_pho_ht_tro_len)):
+    # Xoa that su (khong phai an)
+    supabase.table("okr_to_chuc").delete().eq("id", id).execute()
+    return {"message": "Da xoa OKR"}
