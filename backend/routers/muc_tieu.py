@@ -226,7 +226,9 @@ def dong_y_xoa(id: str, nguoi_dung=Depends(chi_giao_vien)):
     return {"message": "Da xoa"}
 
 @router.post("/{id}/duyet")
-def duyet_muc_tieu(id: str, body: DuyetOKR, nguoi_dung=Depends(chi_giao_vien)):
+def duyet_muc_tieu(id: str, body: Optional[DuyetOKR] = None, nguoi_dung=Depends(chi_giao_vien)):
+    if body is None:
+        body = DuyetOKR()
     mt = supabase.table("muc_tieu").select("*").eq("id", id).execute()
     if not mt.data:
         raise HTTPException(status_code=404, detail="Khong tim thay")
@@ -241,10 +243,13 @@ def duyet_muc_tieu(id: str, body: DuyetOKR, nguoi_dung=Depends(chi_giao_vien)):
         "tieu_chi_3": body.tieu_chi_3, "tieu_chi_4": body.tieu_chi_4,
     }.items() if v is not None}
     if checklist:
-        supabase.table("ket_qua_phe_duyet").insert({
-            "muc_tieu_id": id, "giao_vien_id": nguoi_dung["id"],
-            "ket_qua": "chap_thuan", "nhan_xet_phe_duyet": body.nhan_xet, **checklist
-        }).execute()
+        try:
+            supabase.table("ket_qua_phe_duyet").insert({
+                "muc_tieu_id": id, "giao_vien_id": nguoi_dung["id"],
+                "ket_qua": "chap_thuan", "nhan_xet_phe_duyet": body.nhan_xet, **checklist
+            }).execute()
+        except Exception:
+            pass
     hoc_sinh = supabase.table("nguoi_dung").select("email, ho_ten").eq("id", mt.data[0]["hoc_sinh_id"]).execute()
     if hoc_sinh.data:
         try:
