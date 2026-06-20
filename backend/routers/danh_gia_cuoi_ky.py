@@ -41,6 +41,13 @@ def hs_tu_danh_gia(ky_id: str, body: TuDanhGiaHS, nguoi_dung=Depends(lay_nguoi_d
         supabase.table("danh_gia_cuoi_ky").insert({"hoc_sinh_id": hs_id, "ky_danh_gia_id": ky_id, **data}).execute()
     return {"message": "Da luu tu danh gia cuoi ky"}
 
+@router.get("/lop/{lop}")
+def danh_sach_cuoi_ky_lop(lop: str, ky_id: str, nguoi_dung=Depends(chi_giao_vien)):
+    """Danh sach trang thai danh gia cuoi ky cua HS trong lop (de to mau)."""
+    res = supabase.table("danh_gia_cuoi_ky").select("hoc_sinh_id, nhan_xet_gv, trang_thai, hs_da_tu_danh_gia, diem_so")\
+        .eq("ky_danh_gia_id", ky_id).execute()
+    return res.data
+
 @router.get("/{hs_id}")
 def xem_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
