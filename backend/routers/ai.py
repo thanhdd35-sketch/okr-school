@@ -40,10 +40,14 @@ def tao_nhan_xet(body: TaoNhanXetBody, nguoi_dung=Depends(chi_giao_vien)):
     muc_tieu = mt.data[0]
     ghi_chu_list = [l["ghi_chu"] for l in lich_su.data if l.get("ghi_chu")]
 
-    # Xung ho theo gioi tinh GV: nam -> thay, nu -> co
-    gv_info = supabase.table("nguoi_dung").select("gioi_tinh").eq("id", nguoi_dung["id"]).execute()
-    gt = gv_info.data[0].get("gioi_tinh") if gv_info.data else None
-    xung_ho = "thay" if gt == "nam" else "co" if gt == "nu" else "thay/co"
+    # Xung ho theo gioi tinh GV: nam -> thay, nu -> co (an toan neu cot chua ton tai)
+    xung_ho = "thay/co"
+    try:
+        gv_info = supabase.table("nguoi_dung").select("gioi_tinh").eq("id", nguoi_dung["id"]).execute()
+        gt = gv_info.data[0].get("gioi_tinh") if gv_info.data else None
+        xung_ho = "thay" if gt == "nam" else "co" if gt == "nu" else "thay/co"
+    except Exception:
+        pass
 
     prompt = f"""Ban la giao vien chu nhiem THPT, xung "{xung_ho}", dang viet nhan xet cuoi hoc ky.
 Hoc sinh: {ho_ten}. Muc tieu: {muc_tieu['muc_tieu_lon']}.

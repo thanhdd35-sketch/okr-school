@@ -119,7 +119,11 @@ def tao_giao_vien(body: TaoGiaoVien, nguoi_dung=Depends(chi_quan_tri)):
         data["la_truong_khoi"] = bool(body.la_truong_khoi)
         data["khoi_phu_trach"] = body.khoi_phu_trach if body.la_truong_khoi else None
 
-    res = supabase.table("nguoi_dung").insert(data).execute()
+    try:
+        res = supabase.table("nguoi_dung").insert(data).execute()
+    except Exception:
+        data.pop("gioi_tinh", None)  # cot chua ton tai (chua chay migration v2.4)
+        res = supabase.table("nguoi_dung").insert(data).execute()
     return res.data[0]
 
 # ── Tạo học sinh ─────────────────────────────────────────
@@ -162,7 +166,11 @@ def cap_nhat_nguoi_dung(id: str, body: CapNhatNguoiDung, nguoi_dung=Depends(chi_
         data["bat_buoc_doi_mat_khau"] = True
     if not data:
         raise HTTPException(status_code=400, detail="Khong co du lieu de cap nhat")
-    res = supabase.table("nguoi_dung").update(data).eq("id", id).execute()
+    try:
+        res = supabase.table("nguoi_dung").update(data).eq("id", id).execute()
+    except Exception:
+        data.pop("gioi_tinh", None)  # cot chua ton tai (chua chay migration v2.4)
+        res = supabase.table("nguoi_dung").update(data).eq("id", id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Khong tim thay nguoi dung")
     return res.data[0]
