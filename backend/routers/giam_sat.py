@@ -41,6 +41,10 @@ def tong_quan_truong(ky_id: Optional[str] = None, nguoi_dung=Depends(chi_pho_ht_
         mt_theo_hs.setdefault(m["hoc_sinh_id"], []).append(m)
 
     lop_map: dict = {}
+    # Tao truoc tat ca lop tu GVCN (de lop chua co HS van hien)
+    for ten_lop in gv_theo_lop:
+        if ten_lop:
+            lop_map.setdefault(ten_lop, [])
     for h in hs:
         lop = h.get("ten_lop") or "?"
         lop_map.setdefault(lop, []).append(h)
