@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from database import supabase
+from ky_helper import kiem_tra_ky_mo
 from auth import lay_nguoi_dung_hien_tai, chi_giao_vien
 
 router = APIRouter()
@@ -51,6 +52,7 @@ def danh_sach_giua_ky(lop: str, ky_id: str, nguoi_dung=Depends(chi_giao_vien)):
 # ---------- GVCN: lưu đánh giá nhanh 1 HS ----------
 @router.post("/{hoc_sinh_id}")
 def luu_danh_gia_nhanh(hoc_sinh_id: str, body: DanhGiaNhanhBody, nguoi_dung=Depends(chi_giao_vien)):
+    kiem_tra_ky_mo(body.ky_danh_gia_id)
     if body.trang_thai_nhanh not in ("dang_tot", "can_theo_doi", "can_gap_ngay"):
         raise HTTPException(400, "Trang thai khong hop le")
     dong = _lay_dong(hoc_sinh_id, body.ky_danh_gia_id)
@@ -70,6 +72,7 @@ def luu_danh_gia_nhanh(hoc_sinh_id: str, body: DanhGiaNhanhBody, nguoi_dung=Depe
 # ---------- HS: tự kiểm tra giữa kỳ ----------
 @router.post("/hs/tu-kiem-tra")
 def hs_tu_kiem_tra(body: TuKiemTraBody, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    kiem_tra_ky_mo(body.ky_danh_gia_id)
     if nguoi_dung.get("vai_tro") != "hoc_sinh":
         raise HTTPException(403, "Chi hoc sinh")
     hsid = nguoi_dung["id"]

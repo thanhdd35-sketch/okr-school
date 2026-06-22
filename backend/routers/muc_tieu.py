@@ -76,6 +76,8 @@ def danh_sach_muc_tieu(ky_id: Optional[str] = None, hoc_sinh_id: Optional[str] =
     res = query.order("ngay_tao", desc=True).execute()
     return res.data
 
+from ky_helper import kiem_tra_ky_mo, kiem_tra_ky_mo_theo_muc_tieu
+
 @router.post("/")
 def tao_muc_tieu(body: TaoMucTieu, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     if nguoi_dung.get("vai_tro") != "hoc_sinh":
@@ -125,6 +127,7 @@ def tao_muc_tieu(body: TaoMucTieu, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
 
 @router.put("/{id}")
 def sua_muc_tieu(id: str, body: SuaMucTieu, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    kiem_tra_ky_mo_theo_muc_tieu(id)
     mt = supabase.table("muc_tieu").select("*").eq("id", id).execute()
     if not mt.data:
         raise HTTPException(status_code=404, detail="Khong tim thay muc tieu")
@@ -143,6 +146,7 @@ def sua_muc_tieu(id: str, body: SuaMucTieu, nguoi_dung=Depends(lay_nguoi_dung_hi
 
 @router.post("/{id}/nop")
 def nop_okr(id: str, body: NopOKR, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    kiem_tra_ky_mo_theo_muc_tieu(id)
     if nguoi_dung["vai_tro"] != "hoc_sinh":
         raise HTTPException(status_code=403, detail="Chi hoc sinh")
     mt = supabase.table("muc_tieu").select("*").eq("id", id).eq("hoc_sinh_id", nguoi_dung["id"]).execute()
@@ -189,6 +193,7 @@ class DanhGiaPH(BaseModel):
 
 @router.put("/{id}/danh-gia")
 def phu_huynh_danh_gia(id: str, body: DanhGiaPH, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    kiem_tra_ky_mo_theo_muc_tieu(id)
     if nguoi_dung.get("vai_tro") != "phu_huynh":
         raise HTTPException(status_code=403, detail="Chi phu huynh moi danh gia")
     data = {}

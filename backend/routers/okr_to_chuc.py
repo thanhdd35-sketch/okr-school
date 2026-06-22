@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Any
 from datetime import datetime, timezone
 from database import supabase
+from ky_helper import kiem_tra_ky_mo
 from auth import (lay_nguoi_dung_hien_tai, chi_pho_ht_tro_len,
                   require_truong_khoi, require_gvcn_cua_lop)
 
@@ -31,6 +32,7 @@ def _them_field_mo_rong(data: dict, body: "OKRToChucBody"):
 # ---------- OKR cấp TRƯỜNG ----------
 @router.post("/truong")
 def tao_okr_truong(body: OKRToChucBody, nguoi_dung=Depends(chi_pho_ht_tro_len)):
+    kiem_tra_ky_mo(body.ky_danh_gia_id)
     data = {
         "cap_okr": "truong",
         "muc_tieu_lon": body.muc_tieu_lon,
@@ -76,6 +78,7 @@ def sua_okr_truong(id: str, body: OKRToChucBody, nguoi_dung=Depends(chi_pho_ht_t
 # ---------- OKR cấp KHỐI ----------
 @router.post("/khoi/{khoi}")
 def tao_okr_khoi(khoi: str, body: OKRToChucBody, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    kiem_tra_ky_mo(body.ky_danh_gia_id)
     require_truong_khoi(khoi)(nguoi_dung)  # kiem tra quyen
     data = {
         "cap_okr": "khoi", "khoi": khoi,
@@ -111,6 +114,7 @@ def sua_okr_khoi(khoi: str, id: str, body: OKRToChucBody, nguoi_dung=Depends(lay
 # ---------- OKR cấp LỚP (GVCN đặt) ----------
 @router.post("/lop/{lop}")
 def tao_okr_lop(lop: str, body: OKRToChucBody, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    kiem_tra_ky_mo(body.ky_danh_gia_id)
     require_gvcn_cua_lop(lop)(nguoi_dung)
     data = {
         "cap_okr": "lop", "lop": lop,

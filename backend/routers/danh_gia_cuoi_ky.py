@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 from database import supabase
+from ky_helper import kiem_tra_ky_mo
 from auth import lay_nguoi_dung_hien_tai, chi_giao_vien
 
 router = APIRouter()
@@ -24,6 +25,7 @@ class TuDanhGiaHS(BaseModel):
 
 @router.post("/hs/tu-danh-gia/{ky_id}")
 def hs_tu_danh_gia(ky_id: str, body: TuDanhGiaHS, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    kiem_tra_ky_mo(ky_id)
     if nguoi_dung.get("vai_tro") != "hoc_sinh":
         raise HTTPException(status_code=403, detail="Chi hoc sinh moi tu danh gia")
     hs_id = nguoi_dung["id"]
@@ -57,6 +59,7 @@ def xem_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_
 
 @router.put("/{hs_id}")
 def cap_nhat_nhan_xet(hs_id: str, ky_id: str, body: CapNhatNhanXet, nguoi_dung=Depends(chi_giao_vien)):
+    kiem_tra_ky_mo(ky_id)
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
     update_data = {"nhan_xet_gv": body.nhan_xet_gv}
     if body.diem_so is not None:
@@ -75,6 +78,7 @@ def cap_nhat_nhan_xet(hs_id: str, ky_id: str, body: CapNhatNhanXet, nguoi_dung=D
 
 @router.post("/{hs_id}/hoan-tat")
 def hoan_tat_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(chi_giao_vien)):
+    kiem_tra_ky_mo(ky_id)
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
     # Chan: GVCN chi hoan tat khi HS da tu danh gia
     if not (res.data and res.data[0].get("hs_da_tu_danh_gia")):
@@ -106,6 +110,7 @@ def hoan_tat_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(chi_giao_vien))
 
 @router.put("/{hs_id}/y-kien")
 def y_kien_phu_huynh(hs_id: str, ky_id: str, body: YKienPhuHuynh, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    kiem_tra_ky_mo(ky_id)
     if nguoi_dung.get("vai_tro") != "phu_huynh":
         raise HTTPException(status_code=403, detail="Chi phu huynh moi duoc gui y kien")
 

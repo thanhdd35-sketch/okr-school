@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import date, datetime, timezone
 from database import supabase
 from auth import lay_nguoi_dung_hien_tai, chi_giao_vien
+from ky_helper import kiem_tra_ky_mo_theo_muc_tieu
 
 router = APIRouter()
 
@@ -67,6 +68,7 @@ def danh_sach_kr(mt_id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
 
 @router.post("/muc-tieu/{mt_id}")
 def them_kr(mt_id: str, body: TaoKR, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    kiem_tra_ky_mo_theo_muc_tieu(mt_id)
     # Kiểm tra quyền: chỉ HS sở hữu OKR mới được thêm KR
     mt = supabase.table("muc_tieu").select("*").eq("id", mt_id).execute()
     if not mt.data:
@@ -147,6 +149,8 @@ def cap_nhat_tien_do_kr(kr_id: str, body: CapNhatTienDoKR, nguoi_dung=Depends(la
 
     kr_data = kr.data[0]
     mt = kr_data.get("muc_tieu", {})
+    from ky_helper import kiem_tra_ky_mo
+    kiem_tra_ky_mo(mt.get("ky_danh_gia_id"))
 
     if mt.get("hoc_sinh_id") != nguoi_dung["id"]:
         raise HTTPException(status_code=403, detail="Khong co quyen")
