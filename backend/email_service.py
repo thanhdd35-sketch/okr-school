@@ -23,6 +23,24 @@ def gui_email(den: str, tieu_de: str, noi_dung_html: str):
     except Exception as e:
         print(f"[LOI EMAIL] {e}")
 
+def gui_email_dat_lai_mat_khau(email: str, ho_ten: str, ma: str, han_phut: int = 30):
+    """[v2.6] Gui link dat lai mat khau. Link chi dung duoc 1 lan va co han."""
+    import os as _os
+    url_web = _os.getenv("URL_FRONTEND", "http://localhost:3000").rstrip("/")
+    lien_ket = f"{url_web}/dat-lai-mat-khau?ma={ma}"
+    gui_email(
+        den=email,
+        tieu_de="[OKR] Dat lai mat khau",
+        noi_dung_html=(
+            f"<p>Chao {ho_ten},</p>"
+            f"<p>Chung toi nhan duoc yeu cau dat lai mat khau cho tai khoan cua ban.</p>"
+            f"<p><a href=\"{lien_ket}\">Bam vao day de dat lai mat khau</a></p>"
+            f"<p>Lien ket co hieu luc trong <b>{han_phut} phut</b> va chi su dung duoc <b>mot lan</b>.</p>"
+            f"<p>Neu ban khong yeu cau, hay bo qua email nay — mat khau hien tai van an toan.</p>"
+        )
+    )
+
+
 def gui_email_duyet_muc_tieu(email: str, ho_ten: str, ten_muc_tieu: str):
     gui_email(
         den=email,

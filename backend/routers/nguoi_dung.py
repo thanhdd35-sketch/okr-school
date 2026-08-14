@@ -10,7 +10,32 @@ import audit
 
 router = APIRouter()
 
-MAT_KHAU_MAC_DINH = "Okr@12345"
+MAT_KHAU_MAC_DINH = "Okr@12345"   # [v2.6] chi con dung lam phuong an du phong
+
+# ============================================================
+#  [v2.6] SINH MAT KHAU NGAU NHIEN RIENG CHO TUNG TAI KHOAN
+#  Truoc day MOI tai khoan moi deu dung chung mat khau "Okr@12345"
+#  -> ai cung doan duoc, va HS chua kip doi thi tai khoan bi lo.
+#  Nay moi nguoi mot mat khau rieng, chi hien DUY NHAT mot lan cho
+#  giao vien/quan tri phat lai; CSDL chi luu ban bam.
+# ============================================================
+_CHU_HOA = "ABCDEFGHJKLMNPQRSTUVWXYZ"      # bo I, O de tranh nham voi 1, 0
+_CHU_THUONG = "abcdefghijkmnpqrstuvwxyz"   # bo l
+_CHU_SO = "23456789"                        # bo 0, 1
+
+
+def tao_mat_khau_ngau_nhien(do_dai: int = 10) -> str:
+    """Sinh mat khau de doc, de doc chinh ta, van du manh (>=1 hoa, >=1 so)."""
+    import secrets
+    kho = _CHU_HOA + _CHU_THUONG + _CHU_SO
+    ky_tu = [
+        secrets.choice(_CHU_HOA),
+        secrets.choice(_CHU_SO),
+        secrets.choice(_CHU_THUONG),
+    ]
+    ky_tu += [secrets.choice(kho) for _ in range(max(0, do_dai - len(ky_tu)))]
+    secrets.SystemRandom().shuffle(ky_tu)
+    return "".join(ky_tu)
 
 class ThemHocSinh(BaseModel):
     ho_ten: str
@@ -93,6 +118,7 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
 
     thanh_cong = 0
     loi = []
+    mat_khau_da_cap = []
 
     # Tim cot email bang cach scan du lieu thuc te (khong doan tu header)
     # Scan toi da 5 dong dau de tim cot nao chua "@"
@@ -195,6 +221,9 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
                 "bat_buoc_doi_mat_khau": True,
                 "dang_hoat_dong": True,
             }
+            # [v2.6] Moi tai khoan mot mat khau ngau nhien rieng (khong dung chung)
+            mat_khau_cap = tao_mat_khau_ngau_nhien()
+            record["mat_khau_hash"] = hash_mat_khau(mat_khau_cap)
             if si_so is not None:
                 record["si_so"] = si_so
             if gioi_tinh is not None:
@@ -205,10 +234,18 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
                 record.pop("gioi_tinh", None)
                 supabase.table("nguoi_dung").insert(record).execute()
             thanh_cong += 1
+            mat_khau_da_cap.append({"ho_ten": ho_ten, "email": email, "mat_khau": mat_khau_cap})
         except Exception as e:
             loi.append(f"Dong {i}: {str(e)[:120]}")
 
-    return {"thanh_cong": thanh_cong, "loi": loi, "tong": thanh_cong + len(loi)}
+    # [v2.6] Tra ve danh sach mat khau de GV/QTV phat cho tung nguoi.
+    # Day la lan DUY NHAT he thong hien mat khau — sau do chi con ban bam.
+    return {
+        "thanh_cong": thanh_cong, "loi": loi, "tong": thanh_cong + len(loi),
+        "mat_khau_da_cap": mat_khau_da_cap,
+        "luu_y": "Moi tai khoan co mat khau rieng. Hay tai ve va phat cho tung nguoi — "
+                 "he thong khong hien lai duoc nua.",
+    }
 
 class CapNhatHocSinh(BaseModel):
     ho_ten: Optional[str] = None
@@ -263,15 +300,20 @@ def _kiem_tra_quyen_tren_tai_khoan(nguoi_dung: dict, id_muc_tieu: str):
 def reset_mat_khau(id: str, request: Request, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     _kiem_tra_quyen_tren_tai_khoan(nguoi_dung, id)
 
+    # [v2.6] Cap mat khau ngau nhien rieng thay vi mat khau mac dinh dung chung
+    mat_khau_moi = tao_mat_khau_ngau_nhien()
     supabase.table("nguoi_dung").update({
-        "mat_khau_hash": hash_mat_khau(MAT_KHAU_MAC_DINH),
+        "mat_khau_hash": hash_mat_khau(mat_khau_moi),
         "bat_buoc_doi_mat_khau": True
     }).eq("id", id).execute()
 
     thu_hoi_phien(id)   # [v2.6] dat lai mat khau -> huy moi phien dang mo cua tai khoan do
     audit.ghi_nhat_ky(audit.DAT_LAI_MAT_KHAU, "Dat lai mat khau cho tai khoan khac",
                       nguoi_dung=nguoi_dung, doi_tuong_id=id, request=request)
-    return {"message": f"Da reset mat khau ve mac dinh: {MAT_KHAU_MAC_DINH}"}
+    return {
+        "message": "Da dat lai mat khau. Hay chuyen mat khau nay cho nguoi dung — he thong khong hien lai.",
+        "mat_khau_moi": mat_khau_moi,
+    }
 
 @router.delete("/{id}")
 def vo_hieu_hoa(id: str, request: Request, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
