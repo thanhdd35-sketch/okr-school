@@ -10,7 +10,22 @@ load_dotenv()
 
 JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", 480))
+
+# ============================================================
+#  PHIEN DANG NHAP 2 LOP (v2.6)
+#  - Token TRUY CAP  : song ngan, dung cho moi request
+#  - Token LAM MOI   : song dai, chi dung de xin token truy cap moi
+#  - Thu hoi phien   : moi tai khoan co "phien_ban_token" trong CSDL;
+#                      tang so nay len -> moi token cu het hieu luc ngay.
+# ============================================================
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", 120))    # token truy cap: 2 gio
+REFRESH_EXPIRE_DAYS = int(os.getenv("REFRESH_EXPIRE_DAYS", 30))   # token lam moi: 30 ngay
+CACHE_PHIEN_GIAY = 60      # cache trang thai tai khoan 60s -> thu hoi co hieu luc trong <= 60s
+
+LOAI_TRUY_CAP = "truy_cap"
+LOAI_LAM_MOI = "lam_moi"
+
+_cache_phien: dict = {}    # {nguoi_dung_id: (phien_ban_token, dang_hoat_dong, het_han_cache)}
 
 security = HTTPBearer()
 
@@ -34,11 +49,25 @@ def hash_mat_khau(mat_khau: str) -> str:
 def kiem_tra_mat_khau(mat_khau: str, hash: str) -> bool:
     return bcrypt.checkpw(mat_khau.encode(), hash.encode())
 
-def tao_token(data: dict) -> str:
+def tao_token(data: dict, phien_ban: int = 1) -> str:
+    """Cap token TRUY CAP (song ngan), co mang theo phien ban token de thu hoi duoc."""
     payload = data.copy()
-    het_han = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
-    payload["exp"] = het_han
+    payload["loai"] = LOAI_TRUY_CAP
+    payload["ptv"] = phien_ban
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def tao_token_lam_moi(nguoi_dung_id: str, phien_ban: int = 1) -> str:
+    """Cap token LAM MOI (song dai). Chi dung de xin token truy cap moi."""
+    payload = {
+        "id": nguoi_dung_id,
+        "ptv": phien_ban,
+        "loai": LOAI_LAM_MOI,
+        "exp": datetime.now(timezone.utc) + timedelta(days=REFRESH_EXPIRE_DAYS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
 
 def giai_ma_token(token: str) -> dict:
     try:
@@ -48,9 +77,76 @@ def giai_ma_token(token: str) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token khong hop le")
 
+
+def _doc_trang_thai_tai_khoan(nguoi_dung_id: str):
+    """Doc (phien_ban_token, dang_hoat_dong) tu CSDL, co cache ngan de khong tang tai.
+
+    Tra ve None neu chua the doc duoc (vi du chua chay migration v2.6)
+    -> khi do bo qua kiem tra de he thong van chay binh thuong.
+    """
+    now = datetime.now()
+    c = _cache_phien.get(nguoi_dung_id)
+    if c and now < c[2]:
+        return c[0], c[1]
+
+    from database import supabase   # import cuc bo de tranh vong lap import
+    try:
+        res = supabase.table("nguoi_dung").select("phien_ban_token, dang_hoat_dong").eq("id", nguoi_dung_id).execute()
+    except Exception:
+        return None    # cot chua ton tai -> chua chay migration
+    if not res.data:
+        raise HTTPException(status_code=401, detail="Tai khoan khong ton tai")
+
+    ban_ghi = res.data[0]
+    ptv = int(ban_ghi.get("phien_ban_token") or 1)
+    hoat_dong = bool(ban_ghi.get("dang_hoat_dong", True))
+    _cache_phien[nguoi_dung_id] = (ptv, hoat_dong, now + timedelta(seconds=CACHE_PHIEN_GIAY))
+    return ptv, hoat_dong
+
+
+def kiem_tra_phien_con_hieu_luc(payload: dict):
+    """Chan token thuoc phien da bi thu hoi hoac tai khoan da bi vo hieu hoa."""
+    uid = payload.get("id")
+    if not uid:
+        return
+    trang_thai = _doc_trang_thai_tai_khoan(uid)
+    if trang_thai is None:
+        return
+    ptv_db, dang_hoat_dong = trang_thai
+
+    if not dang_hoat_dong:
+        raise HTTPException(status_code=401, detail="Tai khoan da bi vo hieu hoa")
+
+    ptv_token = payload.get("ptv")
+    if ptv_token is not None and int(ptv_token) != ptv_db:
+        raise HTTPException(
+            status_code=401,
+            detail="Phien dang nhap da bi thu hoi. Vui long dang nhap lai."
+        )
+
+
+def thu_hoi_phien(nguoi_dung_id: str) -> bool:
+    """Tang phien_ban_token -> vo hieu hoa NGAY moi token da cap cho tai khoan nay.
+
+    Goi khi: doi mat khau, admin dat lai mat khau, vo hieu hoa tai khoan,
+    hoac nguoi dung chu dong dang xuat khoi tat ca thiet bi.
+    """
+    from database import supabase
+    try:
+        res = supabase.table("nguoi_dung").select("phien_ban_token").eq("id", nguoi_dung_id).execute()
+        hien_tai = int(res.data[0].get("phien_ban_token") or 1) if res.data else 1
+        supabase.table("nguoi_dung").update({"phien_ban_token": hien_tai + 1}).eq("id", nguoi_dung_id).execute()
+        _cache_phien.pop(nguoi_dung_id, None)
+        return True
+    except Exception:
+        return False   # chua chay migration v2.6 -> bo qua, khong lam gay luong nghiep vu
+
+
 def lay_nguoi_dung_hien_tai(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    payload = giai_ma_token(token)
+    payload = giai_ma_token(credentials.credentials)
+    if payload.get("loai") == LOAI_LAM_MOI:
+        raise HTTPException(status_code=401, detail="Token lam moi khong dung de truy cap du lieu")
+    kiem_tra_phien_con_hieu_luc(payload)
     return payload
 
 def chi_quan_tri(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):

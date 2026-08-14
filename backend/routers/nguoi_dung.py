@@ -4,7 +4,8 @@ from typing import Optional
 import openpyxl
 import io
 from database import supabase
-from auth import hash_mat_khau, lay_nguoi_dung_hien_tai, chi_giao_vien, chi_quan_tri
+from auth import (hash_mat_khau, lay_nguoi_dung_hien_tai, chi_giao_vien,
+                  chi_quan_tri, thu_hoi_phien)
 
 router = APIRouter()
 
@@ -227,22 +228,52 @@ def cap_nhat_hoc_sinh(id: str, body: CapNhatHocSinh, nguoi_dung=Depends(chi_giao
         raise HTTPException(status_code=404, detail="Khong tim thay hoc sinh")
     return res.data[0]
 
+def _kiem_tra_quyen_tren_tai_khoan(nguoi_dung: dict, id_muc_tieu: str):
+    """[v2.6] Chan leo thang dac quyen.
+
+    Truoc day giao vien co the reset mat khau / vo hieu hoa BAT KY tai khoan nao
+    ke ca quan tri vien (chi kiem tra vai tro nguoi goi, khong kiem tra muc tieu)
+    -> co the chiem quyen quan tri. Nay rang buoc pham vi ro rang.
+    """
+    vt = nguoi_dung.get("vai_tro")
+    if vt not in ("quan_tri", "giao_vien"):
+        raise HTTPException(status_code=403, detail="Khong co quyen")
+
+    muc_tieu = supabase.table("nguoi_dung").select("vai_tro, ten_lop, khoi").eq("id", id_muc_tieu).execute()
+    if not muc_tieu.data:
+        raise HTTPException(status_code=404, detail="Khong tim thay tai khoan")
+    mt = muc_tieu.data[0]
+
+    if vt == "quan_tri":
+        return
+
+    # Giao vien: chi thao tac tren HOC SINH thuoc lop minh (hoac khoi neu la truong khoi)
+    if mt.get("vai_tro") != "hoc_sinh":
+        raise HTTPException(status_code=403, detail="Giao vien chi thao tac duoc tren tai khoan hoc sinh")
+    if mt.get("ten_lop") and str(mt["ten_lop"]) == str(nguoi_dung.get("ten_lop")):
+        return
+    if nguoi_dung.get("la_truong_khoi") and mt.get("khoi") \
+       and str(mt["khoi"]) == str(nguoi_dung.get("khoi_phu_trach")):
+        return
+    raise HTTPException(status_code=403, detail="Chi thao tac duoc tren hoc sinh lop minh phu trach")
+
+
 @router.put("/{id}/reset-mat-khau")
 def reset_mat_khau(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
-    if nguoi_dung["vai_tro"] not in ["quan_tri", "giao_vien"]:
-        raise HTTPException(status_code=403, detail="Khong co quyen")
+    _kiem_tra_quyen_tren_tai_khoan(nguoi_dung, id)
 
     supabase.table("nguoi_dung").update({
         "mat_khau_hash": hash_mat_khau(MAT_KHAU_MAC_DINH),
         "bat_buoc_doi_mat_khau": True
     }).eq("id", id).execute()
 
+    thu_hoi_phien(id)   # [v2.6] dat lai mat khau -> huy moi phien dang mo cua tai khoan do
     return {"message": f"Da reset mat khau ve mac dinh: {MAT_KHAU_MAC_DINH}"}
 
 @router.delete("/{id}")
 def vo_hieu_hoa(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
-    if nguoi_dung["vai_tro"] not in ["quan_tri", "giao_vien"]:
-        raise HTTPException(status_code=403, detail="Khong co quyen")
+    _kiem_tra_quyen_tren_tai_khoan(nguoi_dung, id)
 
     supabase.table("nguoi_dung").update({"dang_hoat_dong": False}).eq("id", id).execute()
+    thu_hoi_phien(id)   # [v2.6] vo hieu hoa -> dang xuat ngay khoi moi thiet bi
     return {"message": "Da vo hieu hoa tai khoan"}

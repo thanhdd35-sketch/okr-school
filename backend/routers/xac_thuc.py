@@ -1,9 +1,10 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from database import supabase
-from auth import (hash_mat_khau, kiem_tra_mat_khau, tao_token,
+from auth import (hash_mat_khau, kiem_tra_mat_khau, tao_token, tao_token_lam_moi,
                   kiem_tra_gioi_han_dang_nhap, ghi_dang_nhap_sai,
-                  xoa_dang_nhap_sai, lay_nguoi_dung_hien_tai)
+                  xoa_dang_nhap_sai, lay_nguoi_dung_hien_tai,
+                  giai_ma_token, thu_hoi_phien, LOAI_LAM_MOI)
 
 router = APIRouter()
 
@@ -36,6 +37,7 @@ def dang_nhap(body: DangNhapBody, request: Request):
 
     xoa_dang_nhap_sai(body.email, ip)
 
+    phien_ban = int(user.get("phien_ban_token") or 1)
     token = tao_token({
         "id": user["id"],
         "email": user["email"],
@@ -45,10 +47,12 @@ def dang_nhap(body: DangNhapBody, request: Request):
         "la_truong_khoi": user.get("la_truong_khoi", False),
         "khoi_phu_trach": user.get("khoi_phu_trach"),
         "khoi": user.get("khoi"),
-    })
+    }, phien_ban=phien_ban)
+    refresh_token = tao_token_lam_moi(user["id"], phien_ban)
 
     return {
         "token": token,
+        "refresh_token": refresh_token,
         "bat_buoc_doi_mat_khau": user.get("bat_buoc_doi_mat_khau", False),
         "vai_tro": user["vai_tro"],
         "ho_ten": user["ho_ten"],
@@ -76,6 +80,7 @@ def dang_nhap_phu_huynh(body: DangNhapPhuHuynh, request: Request):
 
     xoa_dang_nhap_sai(body.email_phu_huynh, ip)
 
+    phien_ban = int(hoc_sinh.get("phien_ban_token") or 1)
     token = tao_token({
         "id": hoc_sinh["id"],
         "email": body.email_phu_huynh,
@@ -83,10 +88,12 @@ def dang_nhap_phu_huynh(body: DangNhapPhuHuynh, request: Request):
         "ho_ten_con": hoc_sinh["ho_ten"],
         "hoc_sinh_id": hoc_sinh["id"],
         "ten_lop": hoc_sinh.get("ten_lop")
-    })
+    }, phien_ban=phien_ban)
+    refresh_token = tao_token_lam_moi(hoc_sinh["id"], phien_ban)
 
     return {
         "token": token,
+        "refresh_token": refresh_token,
         "vai_tro": "phu_huynh",
         "ho_ten_con": hoc_sinh["ho_ten"],
         "lop": hoc_sinh.get("ten_lop"),
@@ -117,7 +124,79 @@ def doi_mat_khau(body: DoiMatKhauBody, nguoi_dung=Depends(lay_nguoi_dung_hien_ta
         "bat_buoc_doi_mat_khau": False
     }).eq("id", nguoi_dung["id"]).execute()
 
-    return {"message": "Doi mat khau thanh cong"}
+    # [v2.6] Doi mat khau -> thu hoi TAT CA phien cu (moi thiet bi khac bi dang xuat)
+    thu_hoi_phien(nguoi_dung["id"])
+
+    # Cap lai token cho chinh thiet bi dang thao tac de khong bi dang xuat oan
+    moi = supabase.table("nguoi_dung").select("*").eq("id", nguoi_dung["id"]).execute()
+    phien_ban = int(moi.data[0].get("phien_ban_token") or 1) if moi.data else 1
+    payload = {k: v for k, v in nguoi_dung.items() if k not in ("exp", "loai", "ptv")}
+    return {
+        "message": "Doi mat khau thanh cong. Cac thiet bi khac da bi dang xuat.",
+        "token": tao_token(payload, phien_ban=phien_ban),
+        "refresh_token": tao_token_lam_moi(nguoi_dung["id"], phien_ban),
+    }
+
+
+class LamMoiBody(BaseModel):
+    refresh_token: str
+
+
+@router.post("/lam-moi-token")
+def lam_moi_token(body: LamMoiBody):
+    """Doi token LAM MOI lay token TRUY CAP moi (phien truot).
+
+    Tra 401 neu phien da bi thu hoi hoac tai khoan da bi vo hieu hoa
+    -> frontend se dieu huong ve man hinh dang nhap.
+    """
+    payload = giai_ma_token(body.refresh_token)
+    if payload.get("loai") != LOAI_LAM_MOI:
+        raise HTTPException(status_code=401, detail="Token lam moi khong hop le")
+
+    uid = payload.get("id")
+    res = supabase.table("nguoi_dung").select("*").eq("id", uid).execute()
+    if not res.data:
+        raise HTTPException(status_code=401, detail="Tai khoan khong ton tai")
+
+    user = res.data[0]
+    if not user.get("dang_hoat_dong", True):
+        raise HTTPException(status_code=401, detail="Tai khoan da bi vo hieu hoa")
+
+    phien_ban = int(user.get("phien_ban_token") or 1)
+    if int(payload.get("ptv") or 1) != phien_ban:
+        raise HTTPException(status_code=401, detail="Phien dang nhap da bi thu hoi. Vui long dang nhap lai.")
+
+    # Phu huynh dung chinh ban ghi hoc sinh -> giu nguyen dinh danh trong token
+    if payload.get("vai_tro") == "phu_huynh":
+        du_lieu = {
+            "id": user["id"], "vai_tro": "phu_huynh",
+            "ho_ten_con": user["ho_ten"], "hoc_sinh_id": user["id"],
+            "ten_lop": user.get("ten_lop"),
+        }
+    else:
+        du_lieu = {
+            "id": user["id"], "email": user["email"], "vai_tro": user["vai_tro"],
+            "ho_ten": user["ho_ten"], "ten_lop": user.get("ten_lop"),
+            "la_truong_khoi": user.get("la_truong_khoi", False),
+            "khoi_phu_trach": user.get("khoi_phu_trach"), "khoi": user.get("khoi"),
+        }
+
+    return {
+        "token": tao_token(du_lieu, phien_ban=phien_ban),
+        "refresh_token": tao_token_lam_moi(user["id"], phien_ban),
+    }
+
+
+@router.post("/dang-xuat-tat-ca")
+def dang_xuat_tat_ca(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    """Nguoi dung chu dong thu hoi phien tren MOI thiet bi (khi nghi lo mat may/tai khoan)."""
+    thanh_cong = thu_hoi_phien(nguoi_dung["id"])
+    if not thanh_cong:
+        raise HTTPException(
+            status_code=503,
+            detail="Chua the thu hoi phien. Can chay migration v2.6_phien_dang_nhap.sql."
+        )
+    return {"message": "Da dang xuat khoi tat ca thiet bi. Vui long dang nhap lai."}
 
 # ============================================================
 #  [DA GO BO — v2.6] Endpoint POST /khoi-phuc-admin

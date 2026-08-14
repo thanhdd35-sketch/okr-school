@@ -173,6 +173,12 @@ def cap_nhat_nguoi_dung(id: str, body: CapNhatNguoiDung, nguoi_dung=Depends(chi_
         res = supabase.table("nguoi_dung").update(data).eq("id", id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Khong tim thay nguoi dung")
+
+    # [v2.6] Doi mat khau hoac vo hieu hoa -> thu hoi ngay moi phien dang mo
+    if body.mat_khau or body.dang_hoat_dong is False:
+        from auth import thu_hoi_phien
+        thu_hoi_phien(id)
+
     return res.data[0]
 
 @router.patch("/cap-nhat-nguoi-dung/{id}")
