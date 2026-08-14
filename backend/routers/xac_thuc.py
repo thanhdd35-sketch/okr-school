@@ -5,6 +5,7 @@ from auth import (hash_mat_khau, kiem_tra_mat_khau, tao_token, tao_token_lam_moi
                   kiem_tra_gioi_han_dang_nhap, ghi_dang_nhap_sai,
                   xoa_dang_nhap_sai, lay_nguoi_dung_hien_tai,
                   giai_ma_token, thu_hoi_phien, LOAI_LAM_MOI)
+import audit
 
 router = APIRouter()
 
@@ -28,14 +29,21 @@ def dang_nhap(body: DangNhapBody, request: Request):
     res = supabase.table("nguoi_dung").select("*").eq("email", body.email).eq("dang_hoat_dong", True).execute()
     if not res.data:
         ghi_dang_nhap_sai(body.email, ip)
+        audit.ghi_nhat_ky(audit.DANG_NHAP_THAT_BAI, f"Email khong ton tai: {body.email}",
+                          request=request, ket_qua="that_bai")
         raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
 
     user = res.data[0]
     if not kiem_tra_mat_khau(body.mat_khau, user["mat_khau_hash"]):
         ghi_dang_nhap_sai(body.email, ip)
+        audit.ghi_nhat_ky(audit.DANG_NHAP_THAT_BAI, "Sai mat khau",
+                          nguoi_dung_id=user["id"], vai_tro=user.get("vai_tro"),
+                          request=request, ket_qua="that_bai")
         raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
 
     xoa_dang_nhap_sai(body.email, ip)
+    audit.ghi_nhat_ky(audit.DANG_NHAP, "Dang nhap thanh cong",
+                      nguoi_dung_id=user["id"], vai_tro=user.get("vai_tro"), request=request)
 
     phien_ban = int(user.get("phien_ban_token") or 1)
     token = tao_token({
@@ -79,6 +87,9 @@ def dang_nhap_phu_huynh(body: DangNhapPhuHuynh, request: Request):
         raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
 
     xoa_dang_nhap_sai(body.email_phu_huynh, ip)
+    audit.ghi_nhat_ky(audit.DANG_NHAP, "Phu huynh dang nhap",
+                      nguoi_dung_id=hoc_sinh["id"], vai_tro="phu_huynh",
+                      doi_tuong_id=hoc_sinh["id"], request=request)
 
     phien_ban = int(hoc_sinh.get("phien_ban_token") or 1)
     token = tao_token({
@@ -102,7 +113,7 @@ def dang_nhap_phu_huynh(body: DangNhapPhuHuynh, request: Request):
     }
 
 @router.post("/doi-mat-khau")
-def doi_mat_khau(body: DoiMatKhauBody, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+def doi_mat_khau(body: DoiMatKhauBody, request: Request, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     res = supabase.table("nguoi_dung").select("*").eq("id", nguoi_dung["id"]).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Khong tim thay nguoi dung")
@@ -126,6 +137,8 @@ def doi_mat_khau(body: DoiMatKhauBody, nguoi_dung=Depends(lay_nguoi_dung_hien_ta
 
     # [v2.6] Doi mat khau -> thu hoi TAT CA phien cu (moi thiet bi khac bi dang xuat)
     thu_hoi_phien(nguoi_dung["id"])
+    audit.ghi_nhat_ky(audit.DOI_MAT_KHAU, "Nguoi dung tu doi mat khau",
+                      nguoi_dung=nguoi_dung, request=request)
 
     # Cap lai token cho chinh thiet bi dang thao tac de khong bi dang xuat oan
     moi = supabase.table("nguoi_dung").select("*").eq("id", nguoi_dung["id"]).execute()
@@ -188,9 +201,11 @@ def lam_moi_token(body: LamMoiBody):
 
 
 @router.post("/dang-xuat-tat-ca")
-def dang_xuat_tat_ca(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+def dang_xuat_tat_ca(request: Request, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     """Nguoi dung chu dong thu hoi phien tren MOI thiet bi (khi nghi lo mat may/tai khoan)."""
     thanh_cong = thu_hoi_phien(nguoi_dung["id"])
+    audit.ghi_nhat_ky(audit.THU_HOI_PHIEN, "Dang xuat khoi tat ca thiet bi",
+                      nguoi_dung=nguoi_dung, request=request)
     if not thanh_cong:
         raise HTTPException(
             status_code=503,

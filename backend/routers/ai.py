@@ -6,6 +6,7 @@ import os
 from database import supabase
 from auth import (lay_nguoi_dung_hien_tai, chi_giao_vien, chi_quan_tri,
                   kiem_tra_quyen_tren_hoc_sinh)
+import audit
 
 router = APIRouter()
 
@@ -59,6 +60,9 @@ class TomTatLopBody(BaseModel):
 def tao_nhan_xet(body: TaoNhanXetBody, nguoi_dung=Depends(chi_giao_vien)):
     # [v2.6] GV chi tao nhan xet cho hoc sinh thuoc pham vi phu trach
     kiem_tra_quyen_tren_hoc_sinh(nguoi_dung, body.hoc_sinh_id)
+    # Ghi nhat ky: co du lieu (da an danh) duoc gui ra dich vu AI ben ngoai
+    audit.ghi_nhat_ky(audit.GOI_AI, "Goi AI goi y nhan xet (du lieu da an danh hoa)",
+                      nguoi_dung=nguoi_dung, doi_tuong_id=body.hoc_sinh_id)
 
     hs = supabase.table("nguoi_dung").select("ho_ten").eq("id", body.hoc_sinh_id).execute()
     if not hs.data:

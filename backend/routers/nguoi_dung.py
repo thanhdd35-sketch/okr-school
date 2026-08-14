@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Request
 from pydantic import BaseModel
 from typing import Optional
 import openpyxl
@@ -6,6 +6,7 @@ import io
 from database import supabase
 from auth import (hash_mat_khau, lay_nguoi_dung_hien_tai, chi_giao_vien,
                   chi_quan_tri, thu_hoi_phien)
+import audit
 
 router = APIRouter()
 
@@ -259,7 +260,7 @@ def _kiem_tra_quyen_tren_tai_khoan(nguoi_dung: dict, id_muc_tieu: str):
 
 
 @router.put("/{id}/reset-mat-khau")
-def reset_mat_khau(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+def reset_mat_khau(id: str, request: Request, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     _kiem_tra_quyen_tren_tai_khoan(nguoi_dung, id)
 
     supabase.table("nguoi_dung").update({
@@ -268,12 +269,16 @@ def reset_mat_khau(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     }).eq("id", id).execute()
 
     thu_hoi_phien(id)   # [v2.6] dat lai mat khau -> huy moi phien dang mo cua tai khoan do
+    audit.ghi_nhat_ky(audit.DAT_LAI_MAT_KHAU, "Dat lai mat khau cho tai khoan khac",
+                      nguoi_dung=nguoi_dung, doi_tuong_id=id, request=request)
     return {"message": f"Da reset mat khau ve mac dinh: {MAT_KHAU_MAC_DINH}"}
 
 @router.delete("/{id}")
-def vo_hieu_hoa(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+def vo_hieu_hoa(id: str, request: Request, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     _kiem_tra_quyen_tren_tai_khoan(nguoi_dung, id)
 
     supabase.table("nguoi_dung").update({"dang_hoat_dong": False}).eq("id", id).execute()
     thu_hoi_phien(id)   # [v2.6] vo hieu hoa -> dang xuat ngay khoi moi thiet bi
+    audit.ghi_nhat_ky(audit.VO_HIEU_HOA_TK, "Vo hieu hoa tai khoan",
+                      nguoi_dung=nguoi_dung, doi_tuong_id=id, request=request)
     return {"message": "Da vo hieu hoa tai khoan"}

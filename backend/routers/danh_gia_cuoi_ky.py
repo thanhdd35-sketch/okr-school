@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 from database import supabase
 from ky_helper import kiem_tra_ky_mo
 from auth import lay_nguoi_dung_hien_tai, chi_giao_vien, kiem_tra_quyen_tren_hoc_sinh
+import audit
 
 router = APIRouter()
 
@@ -65,19 +66,26 @@ def danh_sach_cuoi_ky_lop(lop: str, ky_id: str, nguoi_dung=Depends(chi_giao_vien
     return res.data
 
 @router.get("/{hs_id}")
-def xem_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+def xem_danh_gia(hs_id: str, ky_id: str, request: Request, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     # [v2.6] Chan IDOR: truoc day bat ky nguoi dung da dang nhap nao cung
     # doc duoc nhan xet giao vien cua hoc sinh bat ky khi biet hs_id.
     kiem_tra_quyen_tren_hoc_sinh(nguoi_dung, hs_id)
+    # Ghi nhat ky truy cap du lieu nhay cam (gom nhom 15' de khong phinh du lieu)
+    if str(nguoi_dung.get("id")) != str(hs_id):
+        audit.ghi_nhat_ky(audit.XEM_DU_LIEU_NHAY_CAM, "Xem danh gia cuoi ky cua hoc sinh",
+                          nguoi_dung=nguoi_dung, doi_tuong_id=hs_id, request=request)
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
     if not res.data:
         return {"hoc_sinh_id": hs_id, "ky_danh_gia_id": ky_id, "nhan_xet_gv": None, "phan_hoi_ph": None, "trang_thai": "mo"}
     return res.data[0]
 
 @router.put("/{hs_id}")
-def cap_nhat_nhan_xet(hs_id: str, ky_id: str, body: CapNhatNhanXet, nguoi_dung=Depends(chi_giao_vien)):
+def cap_nhat_nhan_xet(hs_id: str, ky_id: str, body: CapNhatNhanXet, request: Request, nguoi_dung=Depends(chi_giao_vien)):
     kiem_tra_ky_mo(ky_id)
     kiem_tra_quyen_tren_hoc_sinh(nguoi_dung, hs_id)   # [v2.6] GV chi ghi nhan xet cho HS lop minh
+    # Chi ghi lai SU KIEN, khong ghi noi dung nhan xet vao nhat ky
+    audit.ghi_nhat_ky(audit.GHI_NHAN_XET, "Giao vien ghi/sua nhan xet cuoi ky",
+                      nguoi_dung=nguoi_dung, doi_tuong_id=hs_id, request=request)
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
     update_data = {"nhan_xet_gv": body.nhan_xet_gv}
     if body.diem_so is not None:

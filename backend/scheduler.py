@@ -36,9 +36,21 @@ def kiem_tra_sap_het_ky():
         for hs in hs_res.data:
             gui_email_sap_het_ky(hs["email"], hs["ho_ten"], ky["ten_ky"])
 
+def luu_tru_nhat_ky_kiem_toan():
+    """[v2.6] Dua nhat ky kiem toan ra object store (tach khoi CSDL nghiep vu)."""
+    try:
+        from luu_tru_nhat_ky import xuat_nhat_ky_ra_object_store, don_nhat_ky_qua_han
+        xuat_nhat_ky_ra_object_store()
+        don_nhat_ky_qua_han()   # mac dinh KHONG xoa gi (xem luu_tru_nhat_ky.py)
+    except Exception as e:
+        print(f"[SCHEDULER] Loi luu tru nhat ky: {str(e)[:150]}")
+
+
 def khoi_dong_scheduler():
     scheduler = BackgroundScheduler()
     scheduler.add_job(kiem_tra_khong_cap_nhat, "cron", hour=8, minute=0)
     scheduler.add_job(kiem_tra_sap_het_ky, "cron", hour=8, minute=5)
+    # Chay hang ngay luc 02:00 — lo nho, deu dan, giam rui ro mat nhat ky
+    scheduler.add_job(luu_tru_nhat_ky_kiem_toan, "cron", hour=2, minute=0)
     scheduler.start()
     print("[SCHEDULER] Da khoi dong thanh cong")
