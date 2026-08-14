@@ -4,9 +4,40 @@ from typing import Optional
 import anthropic
 import os
 from database import supabase
-from auth import lay_nguoi_dung_hien_tai, chi_giao_vien, chi_quan_tri
+from auth import (lay_nguoi_dung_hien_tai, chi_giao_vien, chi_quan_tri,
+                  kiem_tra_quyen_tren_hoc_sinh)
 
 router = APIRouter()
+
+# ============================================================
+#  NGUYEN TAC SU DUNG AI (v2.6) — tuan thu Luat 91/2025/QH15
+#  1. AI KHONG cham diem, KHONG xep loai, KHONG ra quyet dinh ve hoc sinh.
+#     Moi ket qua chi la GOI Y THAM KHAO; giao vien la nguoi quyet dinh cuoi cung.
+#  2. KHONG gui du lieu dinh danh hoc sinh (ho ten, email, ma HS) ra ngoai.
+#     Ten that duoc thay bang the dinh danh gia [HOC_SINH]; sau khi nhan ket qua
+#     he thong moi thay nguoc lai o phia may chu truong (pseudonymisation).
+# ============================================================
+THE_AN_DANH = "[HOC_SINH]"
+
+LUU_Y_AI = ("Noi dung do AI goi y, chi mang tinh THAM KHAO. "
+            "Giao vien can doc, chinh sua va chiu trach nhiem ve nhan xet cuoi cung. "
+            "AI khong duoc dung de cham diem hay xep loai hoc sinh.")
+
+
+def _an_danh(text: str, ho_ten: str) -> str:
+    """Loai bo ten that khoi noi dung truoc khi gui ra dich vu AI ben ngoai."""
+    if not text or not ho_ten:
+        return text or ""
+    ket_qua = text
+    # Thay ca ho ten day du lan tung thanh phan ten (tranh lot ten rieng)
+    for phan in [ho_ten] + [p for p in ho_ten.split() if len(p) > 1]:
+        ket_qua = ket_qua.replace(phan, THE_AN_DANH)
+    return ket_qua
+
+
+def _phuc_hoi_ten(text: str, ho_ten: str) -> str:
+    """Thay the dinh danh gia bang ten that — chi thuc hien tai may chu truong."""
+    return (text or "").replace(THE_AN_DANH, ho_ten)
 
 def lay_client_ai():
     return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -26,6 +57,9 @@ class TomTatLopBody(BaseModel):
 
 @router.post("/tao-nhan-xet")
 def tao_nhan_xet(body: TaoNhanXetBody, nguoi_dung=Depends(chi_giao_vien)):
+    # [v2.6] GV chi tao nhan xet cho hoc sinh thuoc pham vi phu trach
+    kiem_tra_quyen_tren_hoc_sinh(nguoi_dung, body.hoc_sinh_id)
+
     hs = supabase.table("nguoi_dung").select("ho_ten").eq("id", body.hoc_sinh_id).execute()
     if not hs.data:
         raise HTTPException(status_code=404, detail="Khong tim thay hoc sinh")
@@ -49,10 +83,20 @@ def tao_nhan_xet(body: TaoNhanXetBody, nguoi_dung=Depends(chi_giao_vien)):
     except Exception:
         pass
 
+    # [v2.6] AN DANH HOA: khong gui ten that ra dich vu AI ben ngoai
+    mt_an_danh = _an_danh(str(muc_tieu.get("muc_tieu_lon") or ""), ho_ten)
+    kr_an_danh = _an_danh(str(muc_tieu.get("ket_qua_then_chot") or ""), ho_ten)
+
     prompt = f"""Ban la giao vien chu nhiem THPT, xung "{xung_ho}", dang viet nhan xet cuoi hoc ky.
-Hoc sinh: {ho_ten}. Muc tieu: {muc_tieu['muc_tieu_lon']}.
-Ket qua then chot: {muc_tieu['ket_qua_then_chot']} — dat {muc_tieu['tien_do_phan_tram']}%.
-Yeu cau: viet nhan xet NGAN GON DUOI 200 ky tu, khuyen khich, co con so cu the, xung "{xung_ho}".
+Hoc sinh duoc goi bang the dinh danh gia: {THE_AN_DANH}
+Muc tieu: {mt_an_danh}
+Ket qua then chot: {kr_an_danh} — dat {muc_tieu['tien_do_phan_tram']}%.
+
+Yeu cau:
+- Viet nhan xet NGAN GON DUOI 200 ky tu, mang tinh khuyen khich, co con so cu the.
+- Xung "{xung_ho}"; khi nhac den hoc sinh phai dung dung the {THE_AN_DANH}, tuyet doi khong tu dat ten.
+- CHI mo ta hanh vi va ket qua dua tren du lieu duoc cung cap.
+- KHONG cham diem, KHONG xep loai, KHONG gan nhan ca nhan (vi du "luoi", "ca biet").
 Chi tra ve doan nhan xet, khong them gi khac."""
 
     if not os.getenv("ANTHROPIC_API_KEY"):
@@ -65,9 +109,15 @@ Chi tra ve doan nhan xet, khong them gi khac."""
             messages=[{"role": "user", "content": prompt}]
         )
         txt = message.content[0].text.strip()
+        # [v2.6] Thay the dinh danh gia bang ten that — chi tai may chu truong
+        txt = _phuc_hoi_ten(txt, ho_ten)
         if len(txt) > 200:
             txt = txt[:197].rsplit(" ", 1)[0] + "..."
-        return {"nhan_xet": txt}
+        return {
+            "nhan_xet": txt,
+            "la_goi_y_ai": True,
+            "luu_y": LUU_Y_AI,
+        }
     except HTTPException:
         raise
     except Exception as e:

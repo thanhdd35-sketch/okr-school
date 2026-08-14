@@ -22,19 +22,19 @@ class DangNhapPhuHuynh(BaseModel):
 @router.post("/dang-nhap")
 def dang_nhap(body: DangNhapBody, request: Request):
     ip = request.client.host
-    kiem_tra_gioi_han_dang_nhap(ip)
+    kiem_tra_gioi_han_dang_nhap(body.email, ip)
 
     res = supabase.table("nguoi_dung").select("*").eq("email", body.email).eq("dang_hoat_dong", True).execute()
     if not res.data:
-        ghi_dang_nhap_sai(ip)
+        ghi_dang_nhap_sai(body.email, ip)
         raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
 
     user = res.data[0]
     if not kiem_tra_mat_khau(body.mat_khau, user["mat_khau_hash"]):
-        ghi_dang_nhap_sai(ip)
+        ghi_dang_nhap_sai(body.email, ip)
         raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
 
-    xoa_dang_nhap_sai(ip)
+    xoa_dang_nhap_sai(body.email, ip)
 
     token = tao_token({
         "id": user["id"],
@@ -62,19 +62,19 @@ def dang_nhap(body: DangNhapBody, request: Request):
 @router.post("/dang-nhap-phu-huynh")
 def dang_nhap_phu_huynh(body: DangNhapPhuHuynh, request: Request):
     ip = request.client.host
-    kiem_tra_gioi_han_dang_nhap(ip)
+    kiem_tra_gioi_han_dang_nhap(body.email_phu_huynh, ip)
 
     res = supabase.table("nguoi_dung").select("*").eq("email_phu_huynh", body.email_phu_huynh).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).execute()
     if not res.data:
-        ghi_dang_nhap_sai(ip)
-        raise HTTPException(status_code=401, detail="Khong tim thay hoc sinh voi email phu huynh nay")
+        ghi_dang_nhap_sai(body.email_phu_huynh, ip)
+        raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
 
     hoc_sinh = res.data[0]
     if not kiem_tra_mat_khau(body.mat_khau_hoc_sinh, hoc_sinh["mat_khau_hash"]):
-        ghi_dang_nhap_sai(ip)
-        raise HTTPException(status_code=401, detail="Mat khau khong dung")
+        ghi_dang_nhap_sai(body.email_phu_huynh, ip)
+        raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
 
-    xoa_dang_nhap_sai(ip)
+    xoa_dang_nhap_sai(body.email_phu_huynh, ip)
 
     token = tao_token({
         "id": hoc_sinh["id"],
@@ -119,20 +119,18 @@ def doi_mat_khau(body: DoiMatKhauBody, nguoi_dung=Depends(lay_nguoi_dung_hien_ta
 
     return {"message": "Doi mat khau thanh cong"}
 
-@router.post("/khoi-phuc-admin")
-def khoi_phuc_admin(request: Request):
-    """Reset tai khoan admin ve mat khau mac dinh. Chi su dung khi admin quen mat khau."""
-    from auth import hash_mat_khau
-    res = supabase.table("nguoi_dung").select("id").eq("vai_tro", "quan_tri").eq("email", "admin@truong.edu.vn").execute()
-    if not res.data:
-        raise HTTPException(status_code=404, detail="Khong tim thay tai khoan admin")
-    new_hash = hash_mat_khau("Admin@2025")
-    supabase.table("nguoi_dung").update({
-        "mat_khau_hash": new_hash,
-        "bat_buoc_doi_mat_khau": False,
-        "dang_hoat_dong": True
-    }).eq("id", res.data[0]["id"]).execute()
-    return {"message": "Da reset mat khau admin ve: Admin@2025"}
+# ============================================================
+#  [DA GO BO — v2.6] Endpoint POST /khoi-phuc-admin
+#  Ly do: endpoint nay KHONG yeu cau xac thuc, bat ky ai tren Internet
+#  goi duoc cung reset duoc mat khau quan tri ve gia tri co dinh
+#  -> chiem toan quyen he thong. Day la lo hong nghiem trong (RCE-level
+#  privilege escalation) nen da duoc go bo hoan toan.
+#
+#  Quy trinh khoi phuc quan tri AN TOAN thay the (thuc hien thu cong):
+#  Supabase Dashboard -> SQL Editor -> cap nhat mat_khau_hash bang gia tri
+#  bcrypt sinh rieng, sau do bat buoc doi mat khau o lan dang nhap ke tiep.
+#  Xem: docs/QUY_TRINH_KHOI_PHUC_QUAN_TRI.md
+# ============================================================
 
 @router.get("/thong-tin-ca-nhan")
 def thong_tin_ca_nhan(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):

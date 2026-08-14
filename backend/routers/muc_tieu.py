@@ -196,6 +196,14 @@ def phu_huynh_danh_gia(id: str, body: DanhGiaPH, nguoi_dung=Depends(lay_nguoi_du
     kiem_tra_ky_mo_theo_muc_tieu(id)
     if nguoi_dung.get("vai_tro") != "phu_huynh":
         raise HTTPException(status_code=403, detail="Chi phu huynh moi danh gia")
+
+    # [v2.6] Chan IDOR: phu huynh chi danh gia OKR cua dung con minh
+    mt_ph = supabase.table("muc_tieu").select("hoc_sinh_id").eq("id", id).execute()
+    if not mt_ph.data:
+        raise HTTPException(status_code=404, detail="Khong tim thay muc tieu")
+    if str(mt_ph.data[0]["hoc_sinh_id"]) != str(nguoi_dung.get("hoc_sinh_id") or ""):
+        raise HTTPException(status_code=403, detail="Phu huynh chi danh gia duoc muc tieu cua con minh")
+
     data = {}
     if body.diem is not None:
         data["diem_phu_huynh"] = body.diem

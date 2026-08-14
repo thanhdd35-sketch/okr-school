@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from database import supabase
 from ky_helper import kiem_tra_ky_mo
-from auth import lay_nguoi_dung_hien_tai, chi_giao_vien
+from auth import lay_nguoi_dung_hien_tai, chi_giao_vien, kiem_tra_quyen_tren_hoc_sinh
 
 router = APIRouter()
 
@@ -45,13 +45,30 @@ def hs_tu_danh_gia(ky_id: str, body: TuDanhGiaHS, nguoi_dung=Depends(lay_nguoi_d
 
 @router.get("/lop/{lop}")
 def danh_sach_cuoi_ky_lop(lop: str, ky_id: str, nguoi_dung=Depends(chi_giao_vien)):
-    """Danh sach trang thai danh gia cuoi ky cua HS trong lop (de to mau)."""
+    """Danh sach trang thai danh gia cuoi ky cua HS trong lop (de to mau).
+
+    [v2.6] Truoc day truy van chi loc theo ky_danh_gia_id -> tra ve du lieu
+    danh gia cua TOAN BO hoc sinh moi lop. Nay loc dung pham vi lop.
+    """
+    vai_tro = nguoi_dung.get("vai_tro")
+    if vai_tro == "giao_vien" and not nguoi_dung.get("la_truong_khoi") \
+       and str(nguoi_dung.get("ten_lop")) != str(lop):
+        raise HTTPException(status_code=403, detail="Chi GVCN cua lop nay moi xem duoc")
+
+    hs = supabase.table("nguoi_dung").select("id").eq("ten_lop", lop).eq("vai_tro", "hoc_sinh").execute()
+    hs_ids = [h["id"] for h in (hs.data or [])]
+    if not hs_ids:
+        return []
+
     res = supabase.table("danh_gia_cuoi_ky").select("hoc_sinh_id, nhan_xet_gv, trang_thai, hs_da_tu_danh_gia, diem_so")\
-        .eq("ky_danh_gia_id", ky_id).execute()
+        .eq("ky_danh_gia_id", ky_id).in_("hoc_sinh_id", hs_ids).execute()
     return res.data
 
 @router.get("/{hs_id}")
 def xem_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
+    # [v2.6] Chan IDOR: truoc day bat ky nguoi dung da dang nhap nao cung
+    # doc duoc nhan xet giao vien cua hoc sinh bat ky khi biet hs_id.
+    kiem_tra_quyen_tren_hoc_sinh(nguoi_dung, hs_id)
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
     if not res.data:
         return {"hoc_sinh_id": hs_id, "ky_danh_gia_id": ky_id, "nhan_xet_gv": None, "phan_hoi_ph": None, "trang_thai": "mo"}
@@ -60,6 +77,7 @@ def xem_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_
 @router.put("/{hs_id}")
 def cap_nhat_nhan_xet(hs_id: str, ky_id: str, body: CapNhatNhanXet, nguoi_dung=Depends(chi_giao_vien)):
     kiem_tra_ky_mo(ky_id)
+    kiem_tra_quyen_tren_hoc_sinh(nguoi_dung, hs_id)   # [v2.6] GV chi ghi nhan xet cho HS lop minh
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
     update_data = {"nhan_xet_gv": body.nhan_xet_gv}
     if body.diem_so is not None:
@@ -79,6 +97,7 @@ def cap_nhat_nhan_xet(hs_id: str, ky_id: str, body: CapNhatNhanXet, nguoi_dung=D
 @router.post("/{hs_id}/hoan-tat")
 def hoan_tat_danh_gia(hs_id: str, ky_id: str, nguoi_dung=Depends(chi_giao_vien)):
     kiem_tra_ky_mo(ky_id)
+    kiem_tra_quyen_tren_hoc_sinh(nguoi_dung, hs_id)   # [v2.6]
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
     # Chan: GVCN chi hoan tat khi HS da tu danh gia
     if not (res.data and res.data[0].get("hs_da_tu_danh_gia")):
@@ -113,6 +132,8 @@ def y_kien_phu_huynh(hs_id: str, ky_id: str, body: YKienPhuHuynh, nguoi_dung=Dep
     kiem_tra_ky_mo(ky_id)
     if nguoi_dung.get("vai_tro") != "phu_huynh":
         raise HTTPException(status_code=403, detail="Chi phu huynh moi duoc gui y kien")
+    # [v2.6] Chan IDOR: phu huynh chi gui y kien cho dung con minh
+    kiem_tra_quyen_tren_hoc_sinh(nguoi_dung, hs_id)
 
     res = supabase.table("danh_gia_cuoi_ky").select("*").eq("hoc_sinh_id", hs_id).eq("ky_danh_gia_id", ky_id).execute()
     if res.data:
