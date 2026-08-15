@@ -46,11 +46,22 @@ def luu_tru_nhat_ky_kiem_toan():
         print(f"[SCHEDULER] Loi luu tru nhat ky: {str(e)[:150]}")
 
 
+def an_danh_hoc_sinh_qua_han():
+    """[v2.6] An danh hoa hoc sinh da ket thuc hoc va qua thoi han luu tru."""
+    try:
+        from vong_doi_du_lieu import chay_an_danh_dinh_ky
+        chay_an_danh_dinh_ky()
+    except Exception as e:
+        print(f"[SCHEDULER] Loi an danh du lieu: {str(e)[:150]}")
+
+
 def khoi_dong_scheduler():
     scheduler = BackgroundScheduler()
     scheduler.add_job(kiem_tra_khong_cap_nhat, "cron", hour=8, minute=0)
     scheduler.add_job(kiem_tra_sap_het_ky, "cron", hour=8, minute=5)
     # Chay hang ngay luc 02:00 — lo nho, deu dan, giam rui ro mat nhat ky
     scheduler.add_job(luu_tru_nhat_ky_kiem_toan, "cron", hour=2, minute=0)
+    # [v2.6] Vong doi du lieu: an danh hoa hoc sinh da qua han luu tru
+    scheduler.add_job(an_danh_hoc_sinh_qua_han, "cron", hour=3, minute=0)
     scheduler.start()
     print("[SCHEDULER] Da khoi dong thanh cong")

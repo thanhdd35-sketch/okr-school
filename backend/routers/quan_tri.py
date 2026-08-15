@@ -203,3 +203,57 @@ def nhat_ky_hoat_dong(limit: int = 100, nguoi_dung=Depends(chi_quan_tri)):
 @router.get("/nhat-ky")
 def xem_nhat_ky(nguoi_dung=Depends(chi_quan_tri)):
     return nhat_ky_hoat_dong(100, nguoi_dung)
+
+
+# ══════════════════════════════════════════════════════════
+#  VÒNG ĐỜI DỮ LIỆU HỌC SINH (v2.6)
+#  THCS 4 năm · THPT 3 năm · giữ thêm 1 năm → ẩn danh hoá
+# ══════════════════════════════════════════════════════════
+class KetThucHocBody(BaseModel):
+    trang_thai: str                      # da_ra_truong | chuyen_truong | nghi_hoc
+    ly_do: Optional[str] = None
+    ngay: Optional[str] = None           # mặc định hôm nay
+
+
+@router.post("/hoc-sinh/{id}/ket-thuc-hoc")
+def danh_dau_ket_thuc_hoc(id: str, body: KetThucHocBody, nguoi_dung=Depends(chi_quan_tri)):
+    """Đánh dấu học sinh ra trường / chuyển trường / nghỉ học → khoá tài khoản ngay."""
+    from vong_doi_du_lieu import ket_thuc_hoc
+    try:
+        return ket_thuc_hoc(id, body.trang_thai, body.ly_do or "", nguoi_dung, body.ngay)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=503,
+            detail="Chua the xu ly. Can chay migration v2.6_vong_doi_du_lieu.sql")
+
+
+@router.get("/vong-doi/den-han")
+def xem_den_han_an_danh(nguoi_dung=Depends(chi_quan_tri)):
+    """Danh sách học sinh đã quá thời hạn lưu trữ, đến hạn ẩn danh hoá."""
+    from vong_doi_du_lieu import danh_sach_den_han, GIU_THEM_THANG
+    return {"giu_them_thang": GIU_THEM_THANG, "danh_sach": danh_sach_den_han()}
+
+
+class XacNhanAnDanh(BaseModel):
+    xac_nhan: bool = False
+    ly_do: Optional[str] = None
+
+
+@router.post("/vong-doi/an-danh/{id}")
+def an_danh_thu_cong(id: str, body: XacNhanAnDanh, nguoi_dung=Depends(chi_quan_tri)):
+    """Ẩn danh hoá một học sinh (dùng khi có yêu cầu xoá dữ liệu của chủ thể).
+
+    KHÔNG THỂ HOÀN TÁC — bắt buộc truyền xac_nhan = true.
+    """
+    if not body.xac_nhan:
+        raise HTTPException(status_code=400,
+            detail="Thao tac khong the hoan tac. Can truyen xac_nhan = true.")
+    from vong_doi_du_lieu import an_danh_hoc_sinh
+    try:
+        return an_danh_hoc_sinh(id, nguoi_dung, body.ly_do or "yeu_cau_chu_the_du_lieu")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=503,
+            detail="Chua the xu ly. Can chay migration v2.6_vong_doi_du_lieu.sql")
