@@ -103,9 +103,11 @@ def ghi_nhat_ky(hanh_dong: str, mo_ta: str = "", nguoi_dung=None,
 
         try:
             supabase.table("nhat_ky_hoat_dong").insert(ban_ghi).execute()
-        except Exception:
-            # Chua chay migration v2.6 -> thu lai voi bo cot toi thieu
-            toi_thieu = {k: ban_ghi[k] for k in ("hanh_dong", "mo_ta", "thoi_diem") if k in ban_ghi}
+        except Exception as loi_day_du:
+            # Bang co the thieu cot (vi du chua chay migration bo sung 'mo_ta').
+            # Thu lai voi bo cot toi thieu chac chan ton tai -> khong mat dau vet.
+            print(f"[AUDIT] Ghi day du that bai, thu bo cot toi thieu: {str(loi_day_du)[:160]}")
+            toi_thieu = {"hanh_dong": hanh_dong, "thoi_diem": ban_ghi["thoi_diem"]}
             if nguoi_dung_id:
                 toi_thieu["nguoi_dung_id"] = nguoi_dung_id
             supabase.table("nhat_ky_hoat_dong").insert(toi_thieu).execute()

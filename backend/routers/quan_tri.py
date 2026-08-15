@@ -188,16 +188,46 @@ def cap_nhat_nguoi_dung_patch(id: str, body: CapNhatNguoiDung, nguoi_dung=Depend
 # ── Nhật ký hoạt động ────────────────────────────────────
 @router.get("/nhat-ky-hoat-dong")
 def nhat_ky_hoat_dong(limit: int = 100, nguoi_dung=Depends(chi_quan_tri)):
+    """[v2.6] Doc nhat ky KHONG dung truy van join.
+
+    Truoc day dung cu phap embed cua PostgREST ('nguoi_dung:nguoi_dung_id(...)'),
+    nhung bang nhat_ky_hoat_dong khong co rang buoc khoa ngoai -> truy van loi 400,
+    bi 'except: return []' nuot mat nen man hinh LUON rong ma khong bao loi gi.
+    Nay doc thang roi tra cuu ten nguoi dung theo lo -> chay duoc du co khoa ngoai hay khong.
+    """
     try:
-        res = supabase.table("nhat_ky_hoat_dong").select("*, nguoi_dung:nguoi_dung_id(ho_ten, vai_tro, email)").order("thoi_diem", desc=True).limit(limit).execute()
-        # Flatten dữ liệu
-        data = []
-        for item in res.data:
-            nd = item.pop("nguoi_dung", None) or {}
-            data.append({**item, "ho_ten": nd.get("ho_ten"), "vai_tro": nd.get("vai_tro"), "email": nd.get("email")})
-        return data
-    except Exception:
+        res = (supabase.table("nhat_ky_hoat_dong").select("*")
+               .order("thoi_diem", desc=True).limit(limit).execute())
+    except Exception as e:
+        print(f"[NHAT KY] Khong doc duoc: {str(e)[:200]}")
+        raise HTTPException(status_code=503, detail="Chua doc duoc nhat ky hoat dong")
+
+    ban_ghi = res.data or []
+    if not ban_ghi:
         return []
+
+    # Tra cuu ten nguoi dung theo lo (1 truy van thay vi N)
+    ids = list({b["nguoi_dung_id"] for b in ban_ghi if b.get("nguoi_dung_id")})
+    ho_so = {}
+    for i in range(0, len(ids), 100):
+        try:
+            r = supabase.table("nguoi_dung").select("id, ho_ten, vai_tro, email") \
+                .in_("id", ids[i:i + 100]).execute()
+            for u in (r.data or []):
+                ho_so[u["id"]] = u
+        except Exception as e:
+            print(f"[NHAT KY] Bo qua tra cuu nguoi dung: {str(e)[:150]}")
+
+    ket_qua = []
+    for b in ban_ghi:
+        u = ho_so.get(b.get("nguoi_dung_id"), {})
+        ket_qua.append({
+            **b,
+            "ho_ten": u.get("ho_ten") or "(khong xac dinh)",
+            "vai_tro": b.get("vai_tro") or u.get("vai_tro"),
+            "email": u.get("email"),
+        })
+    return ket_qua
 
 # Giữ endpoint cũ để tương thích
 @router.get("/nhat-ky")
