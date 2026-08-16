@@ -67,7 +67,6 @@ Hệ thống được xây dựng theo **kiến trúc client–server ba tầng 
 | PyJWT | 2.9.0 | Sinh và xác thực token đăng nhập (JWT, HS256) |
 | bcrypt | 4.0.1 | Băm mật khẩu (cost factor 12) |
 | httpx | 0.27.2 | Gọi Supabase REST và Claude API |
-| anthropic | 0.34.2 | SDK Claude API (mô hình `claude-sonnet-4-5`) |
 | APScheduler | 3.10.4 | Tác vụ định kỳ (nhắc nhở, dọn dữ liệu) |
 | resend | 2.4.0 | Gửi email thông báo |
 | python-docx / openpyxl | — | Xuất báo cáo Word, đọc/ghi Excel |
@@ -76,7 +75,6 @@ Hệ thống được xây dựng theo **kiến trúc client–server ba tầng 
 | Dịch vụ | Vai trò | Vị trí/Ghi chú |
 |---|---|---|
 | **Supabase (PostgreSQL)** | Lưu trữ toàn bộ dữ liệu | AWS `ap-southeast-1` (Singapore); gói Free (compute NANO) |
-| **Anthropic Claude API** | Gợi ý OKR, nhận xét, dự đoán trở ngại | Trả phí theo lượt dùng |
 | **Resend** | Gửi email tự động | Tùy chọn; tự tắt nếu không cấu hình khóa |
 
 > **Lưu ý kiến trúc:** Backend **không dùng SDK Supabase tiêu chuẩn** mà sử dụng một lớp truy vấn REST tự viết (`backend/database.py`), gọi trực tiếp endpoint `/rest/v1` của Supabase bằng httpx.
@@ -110,8 +108,7 @@ Hệ thống gồm **hai kho mã (repository) độc lập**:
 │   │   ├── okr_to_chuc.py     (OKR trường/khối/lớp)
 │   │   ├── giam_sat.py        (giám sát 3 cấp)
 │   │   ├── bao_cao.py         (xuất báo cáo Word)
-│   │   ├── ai.py             (tích hợp Claude API)
-│   │   ├── quan_tri.py       (chức năng quản trị, nhật ký)
+│   │   │   ├── quan_tri.py       (chức năng quản trị, nhật ký)
 │   │   ├── mau_muc_tieu.py   (mẫu OKR)
 │   │   └── thong_bao.py      (thông báo)
 │   └── sql/
@@ -212,9 +209,9 @@ Cơ sở dữ liệu gồm **12 bảng** trong schema `public`:
 | # | Hạng mục | Rủi ro nếu bỏ qua | Mức độ |
 |---|---|---|---|
 | 1 | **Bật Row-Level Security (RLS)** cho 12 bảng | Khóa công khai (anon) có thể đọc trực tiếp dữ liệu | 🔴 Cao — *đã có script `backend/sql/bat_rls.sql`* |
-| 2 | **Giới hạn CORS** về đúng tên miền Frontend | Hiện đang mở cho mọi nguồn (`allow_origins=["*"]`) | 🔴 Cao |
+| 2 | ~~Giới hạn CORS~~ | **Đã siết (v2.6): chỉ chấp nhận tên miền cấu hình qua biến CORS_ORIGINS; mặc định chỉ localhost và *.vercel.app** | ✅ Xong |
 | 3 | **Cô lập & định kỳ đổi** `SUPABASE_SECRET_KEY`, `JWT_SECRET` | Lộ khóa toàn quyền → lộ toàn bộ dữ liệu | 🔴 Cao |
-| 4 | **Ẩn danh hóa dữ liệu** trước khi gửi Claude API | Dữ liệu định danh học sinh rời khỏi hệ thống | 🟠 Trung bình – Cao |
+| 4 | ~~Ẩn danh hóa dữ liệu trước khi gửi Claude API~~ | **Đã xử lý triệt để: gỡ bỏ hoàn toàn tính năng AI khỏi hệ thống (v2.6). Không còn dữ liệu học sinh rời khỏi hệ thống.** | ✅ Xong |
 | 5 | **Mã hóa cấp ứng dụng** cho các trường nhạy cảm | Nhà cung cấp/kẻ tấn công đọc được dữ liệu gốc | 🟠 Trung bình |
 | 6 | **Ký thỏa thuận xử lý dữ liệu (DPA)** với nhà cung cấp; thông báo & xin đồng ý phụ huynh | Yêu cầu của Luật Bảo vệ dữ liệu cá nhân 2025 | 🔴 Bắt buộc về pháp lý |
 
@@ -229,7 +226,7 @@ Cơ sở dữ liệu gồm **12 bảng** trong schema `public`:
 |---|---|---|
 | Supabase | Free | 0 |
 | Railway | Hobby | ~5 USD/tháng |
-| Claude API | Trả trước theo lượt | Rất nhỏ ở quy mô thử nghiệm |
+| ~~Claude API~~ | **Đã gỡ bỏ (v2.6)** | 0 |
 | Vercel | Free | 0 |
 
 ### 9.2. Năng lực chịu tải và lộ trình mở rộng

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
+from typing import Optional
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -13,6 +14,7 @@ from urllib.parse import quote
 from datetime import date
 from database import supabase
 from auth import chi_giao_vien
+import audit
 
 router = APIRouter()
 
@@ -346,3 +348,194 @@ def xuat_bao_cao_ca_lop(ten_lop: str, ky_id: str, nguoi_dung=Depends(chi_giao_vi
     return StreamingResponse(buf,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": _content_disposition(ten_file)})
+
+
+# ══════════════════════════════════════════════════════════════
+#  XUAT DU LIEU HOC SINH DE PHAN TICH (v2.6)
+#  Giao vien xuat duoc du lieu tai MOI THOI DIEM — khong phu thuoc
+#  ky danh gia, khong bi chan khi ky da khoa (day la thao tac chi doc).
+#  Dinh dang Excel nhieu sheet de tien loc / xoay bang / ve bieu do.
+# ══════════════════════════════════════════════════════════════
+def _kiem_tra_pham_vi_lop(nguoi_dung: dict, ten_lop: str):
+    """GVCN chi xuat duoc lop minh; truong khoi them ca khoi; QTV/PHT toan truong."""
+    vt = nguoi_dung.get("vai_tro")
+    if vt in ("quan_tri", "pho_hieu_truong"):
+        return
+    if vt == "giao_vien":
+        if str(nguoi_dung.get("ten_lop")) == str(ten_lop):
+            return
+        if nguoi_dung.get("la_truong_khoi"):
+            hs = supabase.table("nguoi_dung").select("khoi").eq("ten_lop", ten_lop) \
+                .eq("vai_tro", "hoc_sinh").limit(1).execute()
+            if hs.data and str(hs.data[0].get("khoi")) == str(nguoi_dung.get("khoi_phu_trach")):
+                return
+    raise HTTPException(status_code=403, detail="Chi xuat duoc du lieu lop minh phu trach")
+
+
+def _ghi_sheet(ws, tieu_de: list, dong: list):
+    """Ghi 1 sheet: hang tieu de in dam, co dinh dong dau, tu gian do rong cot."""
+    from openpyxl.styles import Font, PatternFill, Alignment
+    ws.append(tieu_de)
+    for o in ws[1]:
+        o.font = Font(bold=True, color="FFFFFF")
+        o.fill = PatternFill("solid", start_color="0F1B33")
+        o.alignment = Alignment(vertical="center", wrap_text=True)
+    for d in dong:
+        ws.append(d)
+    for i, ten in enumerate(tieu_de, start=1):
+        do_dai = [len(str(ten))]
+        for d in dong[:200]:
+            if i <= len(d) and d[i - 1] is not None:
+                do_dai.append(len(str(d[i - 1])))
+        rong = min(max(max(do_dai) + 2, 12), 55)
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = rong
+    ws.freeze_panes = "A2"
+
+
+@router.get("/xuat-du-lieu")
+def xuat_du_lieu_phan_tich(
+    ten_lop: str,
+    request: Request,
+    tu_ngay: Optional[str] = None,
+    den_ngay: Optional[str] = None,
+    ky_id: Optional[str] = None,
+    hoc_sinh_id: Optional[str] = None,
+    nguoi_dung=Depends(chi_giao_vien),
+):
+    """Xuat toan bo du lieu OKR cua lop ra Excel de phan tich.
+
+    Moi tham so loc deu tuy chon: khong truyen tu_ngay/den_ngay -> lay tat ca thoi diem.
+    """
+    from openpyxl import Workbook
+
+    _kiem_tra_pham_vi_lop(nguoi_dung, ten_lop)
+
+    # --- Hoc sinh trong pham vi ---
+    q_hs = supabase.table("nguoi_dung") \
+        .select("id, ho_ten, email, ten_lop, khoi, so_thu_tu, gioi_tinh, dang_hoat_dong, trang_thai_hoc") \
+        .eq("ten_lop", ten_lop).eq("vai_tro", "hoc_sinh")
+    if hoc_sinh_id:
+        q_hs = q_hs.eq("id", hoc_sinh_id)
+    hs_rows = (q_hs.order("so_thu_tu").execute().data) or []
+    if not hs_rows:
+        raise HTTPException(status_code=404, detail="Khong co hoc sinh trong pham vi nay")
+
+    hs_ids = [h["id"] for h in hs_rows]
+    ten_theo_id = {h["id"]: h["ho_ten"] for h in hs_rows}
+
+    # --- Muc tieu (OKR) ---
+    q_mt = supabase.table("muc_tieu").select("*").in_("hoc_sinh_id", hs_ids)
+    if ky_id:
+        q_mt = q_mt.eq("ky_danh_gia_id", ky_id)
+    if tu_ngay:
+        q_mt = q_mt.gte("ngay_tao", tu_ngay)
+    if den_ngay:
+        q_mt = q_mt.lte("ngay_tao", den_ngay + "T23:59:59")
+    mt_rows = (q_mt.order("ngay_tao").execute().data) or []
+    mt_ids = [m["id"] for m in mt_rows]
+    mt_ten = {m["id"]: m.get("muc_tieu_lon") for m in mt_rows}
+
+    # --- Ten ky danh gia (hien ten thay vi ma) ---
+    ky_ten = {}
+    try:
+        for k in (supabase.table("ky_danh_gia").select("id, ten_ky").execute().data or []):
+            ky_ten[k["id"]] = k["ten_ky"]
+    except Exception:
+        pass
+
+    # --- KR + lich su tien do (chia lo de tranh URL qua dai) ---
+    kr_rows, ls_rows = [], []
+    for i in range(0, len(mt_ids), 50):
+        lo = mt_ids[i:i + 50]
+        try:
+            kr_rows += (supabase.table("ket_qua_then_chot").select("*")
+                        .in_("muc_tieu_id", lo).execute().data) or []
+        except Exception:
+            pass
+        try:
+            q_ls = supabase.table("lich_su_cap_nhat").select("*").in_("muc_tieu_id", lo)
+            if tu_ngay:
+                q_ls = q_ls.gte("thoi_diem", tu_ngay)
+            if den_ngay:
+                q_ls = q_ls.lte("thoi_diem", den_ngay + "T23:59:59")
+            ls_rows += (q_ls.execute().data) or []
+        except Exception:
+            pass
+
+    # --- Danh gia cuoi ky ---
+    try:
+        q_dg = supabase.table("danh_gia_cuoi_ky").select("*").in_("hoc_sinh_id", hs_ids)
+        if ky_id:
+            q_dg = q_dg.eq("ky_danh_gia_id", ky_id)
+        dg_rows = (q_dg.execute().data) or []
+    except Exception:
+        dg_rows = []
+
+    # ---------------- Dung file Excel ----------------
+    wb = Workbook()
+
+    ws = wb.active
+    ws.title = "Hoc sinh"
+    _ghi_sheet(ws,
+               ["STT", "Ho va ten", "Email", "Lop", "Khoi", "Gioi tinh", "Trang thai hoc", "Dang hoat dong"],
+               [[h.get("so_thu_tu"), h.get("ho_ten"), h.get("email"), h.get("ten_lop"),
+                 h.get("khoi"), h.get("gioi_tinh"), h.get("trang_thai_hoc") or "dang_hoc",
+                 "Co" if h.get("dang_hoat_dong") else "Khong"] for h in hs_rows])
+
+    ws = wb.create_sheet("Muc tieu OKR")
+    _ghi_sheet(ws,
+               ["Hoc sinh", "Ky danh gia", "Muc tieu lon", "Loai OKR", "Trang thai",
+                "Tien do (%)", "Han hoan thanh", "Da hoan thanh", "Ngay tao",
+                "Tro ngai du doan", "Ke hoach vuot qua", "Nhan xet giao vien"],
+               [[ten_theo_id.get(m.get("hoc_sinh_id")), ky_ten.get(m.get("ky_danh_gia_id"), ""),
+                 m.get("muc_tieu_lon"), m.get("loai_okr"), m.get("trang_thai"),
+                 m.get("tien_do_phan_tram"), m.get("han_hoan_thanh"),
+                 "Co" if m.get("da_hoan_thanh") else "Khong", str(m.get("ngay_tao") or "")[:19],
+                 m.get("tro_ngai_du_doan"), m.get("ke_hoach_vuot_qua"),
+                 m.get("nhan_xet_giao_vien")] for m in mt_rows])
+
+    ws = wb.create_sheet("Ket qua then chot")
+    _ghi_sheet(ws,
+               ["Muc tieu lon", "Noi dung KR", "Khoi diem", "Hien tai", "Chi tieu",
+                "Don vi", "Xu huong", "Han hoan thanh"],
+               [[mt_ten.get(k.get("muc_tieu_id")), k.get("noi_dung"), k.get("gia_tri_khoi_diem"),
+                 k.get("gia_tri_hien_tai"), k.get("gia_tri_muc_tieu"), k.get("don_vi"),
+                 k.get("xu_huong"), k.get("han_hoan_thanh")] for k in kr_rows])
+
+    ws = wb.create_sheet("Lich su tien do")
+    ls_rows.sort(key=lambda x: str(x.get("thoi_diem") or ""))
+    _ghi_sheet(ws,
+               ["Thoi diem", "Muc tieu lon", "Tien do (%)", "Tu danh gia", "Ghi chu"],
+               [[str(l.get("thoi_diem") or "")[:19], mt_ten.get(l.get("muc_tieu_id")),
+                 l.get("tien_do"), l.get("trang_thai_tu_danh_gia"), l.get("ghi_chu")]
+                for l in ls_rows])
+
+    ws = wb.create_sheet("Danh gia cuoi ky")
+    _ghi_sheet(ws,
+               ["Hoc sinh", "Ky danh gia", "Diem so", "Trang thai", "HS da tu danh gia",
+                "Nhan xet giao vien", "Y kien phu huynh", "Ky vong ky tiep"],
+               [[ten_theo_id.get(d.get("hoc_sinh_id")), ky_ten.get(d.get("ky_danh_gia_id"), ""),
+                 d.get("diem_so"), d.get("trang_thai"),
+                 "Co" if d.get("hs_da_tu_danh_gia") else "Khong",
+                 d.get("nhan_xet_gv"), d.get("phan_hoi_ph"), d.get("ky_vong_ky_tiep")]
+                for d in dg_rows])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    # Xuat du lieu hoc sinh la thao tac can truy vet -> ghi nhat ky kiem toan
+    audit.ghi_nhat_ky(
+        audit.XUAT_BAO_CAO,
+        "Xuat du lieu phan tich lop " + str(ten_lop) +
+        " (" + str(len(hs_rows)) + " HS, " + str(len(mt_rows)) + " OKR; tu " +
+        str(tu_ngay or "dau") + " den " + str(den_ngay or "nay") + ")",
+        nguoi_dung=nguoi_dung, request=request)
+
+    khoang = ("_" + tu_ngay + "_" + den_ngay) if (tu_ngay and den_ngay) else ""
+    ten_file = "Du-lieu-OKR_" + str(ten_lop) + khoang + "_" + date.today().isoformat() + ".xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": _content_disposition(ten_file)},
+    )

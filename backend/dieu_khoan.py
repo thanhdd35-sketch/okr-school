@@ -9,7 +9,7 @@ Khi sua noi dung -> PHAI tang PHIEN_BAN. He thong se yeu cau nguoi dung
 dong y lai ban moi (bang chung tuan thu duoc luu theo tung phien ban).
 """
 
-PHIEN_BAN = "1.0"
+PHIEN_BAN = "1.1"   # 1.1: go bo hoan toan tinh nang AI khoi he thong
 
 NOI_DUNG = {
     "phien_ban": PHIEN_BAN,
@@ -37,17 +37,16 @@ NOI_DUNG = {
         {
             "tieu_de": "4. Nguyên tắc đánh giá học sinh",
             "noi_dung": "Hệ thống không xếp hạng, không so sánh học sinh với học sinh khác. "
-                        "Công cụ trí tuệ nhân tạo (AI) chỉ đưa ra gợi ý mang tính tham khảo và dữ liệu "
-                        "gửi tới AI đã được ẩn danh (không kèm họ tên học sinh). "
-                        "AI KHÔNG được sử dụng để chấm điểm hay xếp loại; giáo viên là người "
-                        "đánh giá và chịu trách nhiệm cuối cùng."
+                        "Hệ thống KHÔNG sử dụng trí tuệ nhân tạo (AI) để nhận xét, chấm điểm hay "
+                        "xếp loại học sinh. Toàn bộ nhận xét và đánh giá do giáo viên trực tiếp thực hiện "
+                        "và chịu trách nhiệm. Dữ liệu học sinh không được gửi tới bất kỳ dịch vụ AI nào."
         },
         {
             "tieu_de": "5. Bên thứ ba tham gia xử lý",
-            "noi_dung": "Hệ thống sử dụng dịch vụ lưu trữ và vận hành của bên thứ ba (nhà cung cấp hạ tầng "
-                        "điện toán đám mây và dịch vụ AI). Các bên này chỉ được xử lý dữ liệu theo yêu cầu "
-                        "của nhà trường, bị ràng buộc bởi thỏa thuận xử lý dữ liệu và không được sử dụng "
-                        "dữ liệu cho mục đích riêng."
+            "noi_dung": "Hệ thống chỉ sử dụng dịch vụ lưu trữ và vận hành của nhà cung cấp hạ tầng "
+                        "điện toán đám mây. Các bên này chỉ được xử lý dữ liệu theo yêu cầu của nhà trường, "
+                        "bị ràng buộc bởi thỏa thuận xử lý dữ liệu và không được sử dụng dữ liệu "
+                        "cho mục đích riêng."
         },
         {
             "tieu_de": "6. Thời gian lưu trữ",
