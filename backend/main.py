@@ -24,14 +24,21 @@ app = FastAPI(title="OKR Truong Hoc API", version="2.6.0")
 #  Neu chua dat -> chi chap nhan localhost (phat trien) va *.vercel.app.
 # ============================================================
 _cors_env = os.getenv("CORS_ORIGINS", "").strip()
+CORS_ORIGINS = [o.strip().rstrip("/") for o in _cors_env.split(",") if o.strip()]
+
+# Luon tin cay dia chi web chinh thuc da khai bao o FRONTEND_URL
+# -> tranh truong hop siet CORS lam giao dien khong goi duoc API.
+_fe = (os.getenv("FRONTEND_URL") or "").strip().rstrip("/")
+if _fe and _fe not in CORS_ORIGINS:
+    CORS_ORIGINS.append(_fe)
+
 if _cors_env:
-    CORS_ORIGINS = [o.strip() for o in _cors_env.split(",") if o.strip()]
     CORS_REGEX = None
     print(f"[CORS] Chi cho phep: {CORS_ORIGINS}")
 else:
-    CORS_ORIGINS = []
     CORS_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://[a-zA-Z0-9-]+\.vercel\.app$"
-    print("[CORS] CANH BAO: chua dat CORS_ORIGINS -> tam chap nhan localhost va *.vercel.app. "
+    print(f"[CORS] Chua dat CORS_ORIGINS -> chap nhan localhost, *.vercel.app"
+          f"{' va ' + _fe if _fe else ''}. "
           "Nen dat CORS_ORIGINS ve dung ten mien chinh thuc cua truong.")
 
 app.add_middleware(
