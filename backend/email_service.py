@@ -26,7 +26,9 @@ def gui_email(den: str, tieu_de: str, noi_dung_html: str):
 def gui_email_dat_lai_mat_khau(email: str, ho_ten: str, ma: str, han_phut: int = 30):
     """[v2.6] Gui link dat lai mat khau. Link chi dung duoc 1 lan va co han."""
     import os as _os
-    url_web = _os.getenv("URL_FRONTEND", "http://localhost:3000").rstrip("/")
+    # Du an dang dung ten bien FRONTEND_URL; chap nhan ca URL_FRONTEND cho chac chan
+    url_web = (_os.getenv("FRONTEND_URL") or _os.getenv("URL_FRONTEND")
+               or "http://localhost:3000").rstrip("/")
     lien_ket = f"{url_web}/dat-lai-mat-khau?ma={ma}"
     gui_email(
         den=email,
