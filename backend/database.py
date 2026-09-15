@@ -65,6 +65,11 @@ class SupabaseQuery:
             self._filters.append(f"{col}=eq.{val}")
         return self
 
+    def ilike(self, col: str, val: Any):
+        # Truoc day thieu ham nay -> nhanh du phong trong nguoi_dung.py goi .ilike() bi loi 500
+        self._filters.append(f"{col}=ilike.{val}")
+        return self
+
     def neq(self, col: str, val: Any):
         self._filters.append(f"{col}=neq.{val}")
         return self
