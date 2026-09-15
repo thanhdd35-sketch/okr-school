@@ -10,7 +10,7 @@ import audit
 
 router = APIRouter()
 
-MAT_KHAU_MAC_DINH = "Okr@12345"   # [v2.6] chi con dung lam phuong an du phong
+MAT_KHAU_MAC_DINH = "Okr@2026"   # mat khau lan dau khi nhap danh sach / them moi; bat buoc doi o lan dang nhap dau
 
 # ============================================================
 #  [v2.6] SINH MAT KHAU NGAU NHIEN RIENG CHO TUNG TAI KHOAN
@@ -118,7 +118,6 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
 
     thanh_cong = 0
     loi = []
-    mat_khau_da_cap = []
 
     # Tim cot email bang cach scan du lieu thuc te (khong doan tu header)
     # Scan toi da 5 dong dau de tim cot nao chua "@"
@@ -221,9 +220,7 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
                 "bat_buoc_doi_mat_khau": True,
                 "dang_hoat_dong": True,
             }
-            # [v2.6] Moi tai khoan mot mat khau ngau nhien rieng (khong dung chung)
-            mat_khau_cap = tao_mat_khau_ngau_nhien()
-            record["mat_khau_hash"] = hash_mat_khau(mat_khau_cap)
+
             if si_so is not None:
                 record["si_so"] = si_so
             if gioi_tinh is not None:
@@ -234,17 +231,12 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
                 record.pop("gioi_tinh", None)
                 supabase.table("nguoi_dung").insert(record).execute()
             thanh_cong += 1
-            mat_khau_da_cap.append({"ho_ten": ho_ten, "email": email, "mat_khau": mat_khau_cap})
         except Exception as e:
             loi.append(f"Dong {i}: {str(e)[:120]}")
 
-    # [v2.6] Tra ve danh sach mat khau de GV/QTV phat cho tung nguoi.
-    # Day la lan DUY NHAT he thong hien mat khau — sau do chi con ban bam.
     return {
         "thanh_cong": thanh_cong, "loi": loi, "tong": thanh_cong + len(loi),
-        "mat_khau_da_cap": mat_khau_da_cap,
-        "luu_y": "Moi tai khoan co mat khau rieng. Hay tai ve va phat cho tung nguoi — "
-                 "he thong khong hien lai duoc nua.",
+        "mat_khau_lan_dau": MAT_KHAU_MAC_DINH,
     }
 
 class CapNhatHocSinh(BaseModel):
