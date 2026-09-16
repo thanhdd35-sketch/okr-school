@@ -393,6 +393,8 @@ def lich_su(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
 
 @router.get("/theo-lop/{ten_lop}")
 def muc_tieu_theo_lop(ten_lop: str, ky_id: Optional[str] = None, nguoi_dung=Depends(chi_giao_vien)):
+    from routers.bao_cao import _kiem_tra_pham_vi_lop
+    _kiem_tra_pham_vi_lop(nguoi_dung, ten_lop)   # GVCN chi xem duoc lop minh
     hs_res = supabase.table("nguoi_dung").select("id").eq("ten_lop", ten_lop).eq("vai_tro", "hoc_sinh").execute()
     hs_ids = [h["id"] for h in hs_res.data]
     if not hs_ids:
@@ -402,3 +404,120 @@ def muc_tieu_theo_lop(ten_lop: str, ky_id: Optional[str] = None, nguoi_dung=Depe
         query = query.eq("ky_danh_gia_id", ky_id)
     res = query.order("ngay_tao", desc=True).execute()
     return res.data
+
+
+# ══════════════════════════════════════════════════════════════
+#  THỐNG KÊ TỔNG QUAN LỚP THEO KỲ (dành cho Bảng theo dõi lớp)
+#  Chỉ đọc dữ liệu. Không xếp hạng/so sánh học sinh: chỉ số liệu tập thể
+#  + trạng thái nộp/duyệt của từng em để GVCN biết việc cần làm.
+# ══════════════════════════════════════════════════════════════
+TRANG_THAI_HS_UU_TIEN = ["can_sua", "cho_duyet", "xin_xoa", "da_duyet"]
+
+
+def _trang_thai_hoc_sinh(okrs: list) -> str:
+    """Suy ra trạng thái của 1 học sinh trong kỳ từ các OKR của em."""
+    da_nop = [m for m in okrs if m.get("trang_thai") != "nhap"]
+    if not da_nop:
+        return "dang_soan" if okrs else "chua_nop"
+    tt = {m.get("trang_thai") for m in da_nop}
+    if "yeu_cau_sua" in tt:
+        return "can_sua"
+    if "cho_duyet" in tt:
+        return "cho_duyet"
+    if "xin_xoa" in tt:
+        return "xin_xoa"
+    return "da_duyet"
+
+
+@router.get("/thong-ke-lop/{ten_lop}")
+def thong_ke_lop(ten_lop: str, ky_id: str, nguoi_dung=Depends(chi_giao_vien)):
+    from routers.bao_cao import _kiem_tra_pham_vi_lop
+    _kiem_tra_pham_vi_lop(nguoi_dung, ten_lop)
+
+    hs_rows = (supabase.table("nguoi_dung").select("id, ho_ten, so_thu_tu")
+               .eq("ten_lop", ten_lop).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True)
+               .execute().data) or []
+    hs_ids = [h["id"] for h in hs_rows]
+
+    okr_rows = []
+    if hs_ids:
+        okr_rows = (supabase.table("muc_tieu")
+                    .select("id, hoc_sinh_id, trang_thai, tien_do_tong, tien_do_phan_tram, ngay_tao")
+                    .in_("hoc_sinh_id", hs_ids).eq("ky_danh_gia_id", ky_id).execute().data) or []
+
+    theo_hs: dict = {}
+    for m in okr_rows:
+        theo_hs.setdefault(m["hoc_sinh_id"], []).append(m)
+
+    def _tien_do(m):
+        v = m.get("tien_do_tong")
+        if v is None:
+            v = m.get("tien_do_phan_tram")
+        try:
+            return float(v or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    danh_sach = []
+    for h in hs_rows:
+        okrs = theo_hs.get(h["id"], [])
+        da_nop = [m for m in okrs if m.get("trang_thai") != "nhap"]
+        da_duyet = [m for m in da_nop if m.get("trang_thai") == "da_duyet"]
+        danh_sach.append({
+            "id": h["id"], "ho_ten": h["ho_ten"], "so_thu_tu": h.get("so_thu_tu"),
+            "trang_thai": _trang_thai_hoc_sinh(okrs),
+            "so_okr_da_nop": len(da_nop), "so_okr_da_duyet": len(da_duyet),
+            "tien_do_tb": round(sum(_tien_do(m) for m in da_duyet) / len(da_duyet)) if da_duyet else None,
+        })
+
+    dem_hs = {k: 0 for k in ["da_duyet", "cho_duyet", "can_sua", "xin_xoa", "dang_soan", "chua_nop"]}
+    for x in danh_sach:
+        dem_hs[x["trang_thai"]] += 1
+
+    dem_okr = {k: 0 for k in ["cho_duyet", "da_duyet", "yeu_cau_sua", "xin_xoa", "nhap"]}
+    for m in okr_rows:
+        if m.get("trang_thai") in dem_okr:
+            dem_okr[m["trang_thai"]] += 1
+
+    # Phân bố tiến độ của các OKR đã duyệt (số liệu tập thể, không gắn tên)
+    moc = [("80–100%", 80), ("60–79%", 60), ("40–59%", 40), ("20–39%", 20), ("0–19%", 0)]
+    phan_bo = {ten: 0 for ten, _ in moc}
+    for m in okr_rows:
+        if m.get("trang_thai") == "da_duyet":
+            v = _tien_do(m)
+            for ten, nguong in moc:
+                if v >= nguong:
+                    phan_bo[ten] += 1
+                    break
+
+    # Số lần duyệt / yêu cầu sửa / thu hồi phê duyệt trong khoảng thời gian của kỳ
+    su_kien = {"duyet_muc_tieu": 0, "yeu_cau_sua": 0, "huy_duyet": 0}
+    if hs_ids:
+        try:
+            ky = supabase.table("ky_danh_gia").select("ngay_bat_dau, ngay_ket_thuc").eq("id", ky_id).execute().data
+            q = (supabase.table("thong_bao").select("loai")
+                 .in_("nguoi_nhan", hs_ids).in_("loai", list(su_kien.keys())))
+            if ky and ky[0].get("ngay_bat_dau"):
+                q = q.gte("ngay_tao", str(ky[0]["ngay_bat_dau"]))
+            if ky and ky[0].get("ngay_ket_thuc"):
+                q = q.lte("ngay_tao", str(ky[0]["ngay_ket_thuc"]) + "T23:59:59")
+            for tb in (q.execute().data or []):
+                su_kien[tb["loai"]] = su_kien.get(tb["loai"], 0) + 1
+        except Exception:
+            pass
+
+    si_so = len(hs_rows)
+    so_da_nop = sum(1 for x in danh_sach if x["so_okr_da_nop"] > 0)
+    okr_duyet = [m for m in okr_rows if m.get("trang_thai") == "da_duyet"]
+    return {
+        "si_so": si_so,
+        "hs_da_nop": so_da_nop,
+        "hs_chua_nop": si_so - so_da_nop,
+        "hs_theo_trang_thai": dem_hs,
+        "okr_theo_trang_thai": dem_okr,
+        "tong_okr_da_nop": sum(v for k, v in dem_okr.items() if k != "nhap"),
+        "tien_do_tb_lop": round(sum(_tien_do(m) for m in okr_duyet) / len(okr_duyet)) if okr_duyet else 0,
+        "phan_bo_tien_do": [{"muc": k, "so_okr": v} for k, v in phan_bo.items()],
+        "su_kien": su_kien,
+        "danh_sach_hs": danh_sach,
+    }
