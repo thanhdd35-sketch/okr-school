@@ -75,13 +75,55 @@ def mo_ky(id: str, nguoi_dung=Depends(chi_quan_tri)):
         raise HTTPException(status_code=404, detail="Khong tim thay ky danh gia")
     return {"message": "Da mo ky danh gia"}
 
+def _dem_du_lieu_ky(id: str) -> dict:
+    """Dem du lieu dang gan voi ky (dung cho canh bao truoc khi xoa)."""
+    dem = {}
+    for bang in ("muc_tieu", "danh_gia_giua_ky", "danh_gia_cuoi_ky", "okr_to_chuc"):
+        try:
+            dem[bang] = len(supabase.table(bang).select("id").eq("ky_danh_gia_id", id).execute().data or [])
+        except Exception:
+            dem[bang] = 0
+    return dem
+
+
+@router.get("/{id}/du-lieu-lien-quan")
+def du_lieu_lien_quan(id: str, nguoi_dung=Depends(chi_quan_tri)):
+    return _dem_du_lieu_ky(id)
+
+
 @router.delete("/{id}")
 def xoa_ky(id: str, nguoi_dung=Depends(chi_quan_tri)):
-    # Kiểm tra còn OKR trong kỳ không
-    okrs = supabase.table("muc_tieu").select("id").eq("ky_danh_gia_id", id).execute()
-    if okrs.data:
-        raise HTTPException(status_code=400, detail=f"Khong the xoa: ky dang co {len(okrs.data)} muc tieu OKR")
-    res = supabase.table("ky_danh_gia").delete().eq("id", id).execute()
-    if not res.data:
+    """Xoa ky danh gia.
+
+    [SUA LOI] Truoc day chi kiem tra OKR hoc sinh; ky con OKR to chuc (truong/khoi/lop)
+    hoac ban danh gia thi CSDL chan xoa do rang buoc khoa ngoai -> bao loi may chu chung chung.
+    Nay: con DU LIEU HOC SINH (OKR ca nhan, danh gia giua/cuoi ky) -> tu choi, bao ro so luong;
+    chi con OKR to chuc -> xoa kem OKR to chuc roi xoa ky.
+    """
+    ky = supabase.table("ky_danh_gia").select("id, ten_ky").eq("id", id).execute().data
+    if not ky:
         raise HTTPException(status_code=404, detail="Khong tim thay ky danh gia")
-    return {"message": "Da xoa ky danh gia"}
+
+    dem = _dem_du_lieu_ky(id)
+    chan = []
+    if dem["muc_tieu"]:
+        chan.append(f"{dem['muc_tieu']} OKR cua hoc sinh")
+    if dem["danh_gia_giua_ky"]:
+        chan.append(f"{dem['danh_gia_giua_ky']} danh gia giua ky")
+    if dem["danh_gia_cuoi_ky"]:
+        chan.append(f"{dem['danh_gia_cuoi_ky']} danh gia cuoi ky")
+    if chan:
+        raise HTTPException(status_code=400,
+            detail="Khong the xoa: ky dang co " + ", ".join(chan) + ". Hay khoa ky thay vi xoa de giu du lieu hoc sinh.")
+
+    if dem["okr_to_chuc"]:
+        supabase.table("okr_to_chuc").delete().eq("ky_danh_gia_id", id).execute()
+    supabase.table("ky_danh_gia").delete().eq("id", id).execute()
+
+    try:
+        import audit
+        audit.ghi_nhat_ky("xoa_ky_danh_gia",
+            f"Xoa ky '{ky[0]['ten_ky']}' (kem {dem['okr_to_chuc']} OKR to chuc)", nguoi_dung=nguoi_dung)
+    except Exception:
+        pass
+    return {"message": "Da xoa ky danh gia", "da_xoa_okr_to_chuc": dem["okr_to_chuc"]}
