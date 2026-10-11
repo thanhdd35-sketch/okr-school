@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
+from typing import Optional
 from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
