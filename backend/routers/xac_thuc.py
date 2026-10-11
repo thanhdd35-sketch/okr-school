@@ -428,7 +428,10 @@ def thong_tin_ca_nhan(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
 #  Nguyen tac: KHONG tao tai khoan moi. Chi email da duoc quan tri vien
 #  nhap vao he thong tu truoc moi dang nhap duoc. Khong doi/xoa du lieu cu.
 # ══════════════════════════════════════════════════════════════
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+# Client ID cua ung dung tren Google Cloud. Day KHONG phai bi mat (no hien cong khai
+# trong ma trang web). Co the ghi de bang bien moi truong GOOGLE_CLIENT_ID.
+GOOGLE_CLIENT_ID_MAC_DINH = "491096013897-sguetqbkcof4atat2lbkk3p4reb13mqn.apps.googleusercontent.com"
+GOOGLE_CLIENT_ID = (os.getenv("GOOGLE_CLIENT_ID") or GOOGLE_CLIENT_ID_MAC_DINH).strip()
 
 
 class DangNhapGoogle(BaseModel):
