@@ -9,6 +9,7 @@ from auth import (hash_mat_khau, kiem_tra_mat_khau, tao_token, tao_token_lam_moi
                   xoa_dang_nhap_sai, lay_nguoi_dung_hien_tai,
                   giai_ma_token, thu_hoi_phien, LOAI_LAM_MOI)
 import audit
+import os
 
 router = APIRouter()
 
@@ -28,6 +29,23 @@ def kiem_tra_do_manh_mat_khau(mat_khau: str):
         raise HTTPException(status_code=400, detail="Mat khau phai co it nhat 1 chu hoa")
     if not any(c.isdigit() for c in mat_khau):
         raise HTTPException(status_code=400, detail="Mat khau phai co it nhat 1 chu so")
+
+
+def tim_theo_email(email: str, them_dieu_kien=None):
+    """Tim tai khoan theo email, KHONG phan biet hoa/thuong."""
+    e = (email or "").strip()
+    for buoc in ("eq", "ilike"):
+        q = supabase.table("nguoi_dung").select("*")
+        q = q.eq("email", e) if buoc == "eq" else q.ilike("email", e)
+        if them_dieu_kien:
+            q = them_dieu_kien(q)
+        try:
+            res = q.execute()
+        except Exception:
+            continue
+        if res.data:
+            return res.data[0]
+    return None
 
 
 def _bam_ma(ma: str) -> str:
@@ -51,14 +69,13 @@ def dang_nhap(body: DangNhapBody, request: Request):
     ip = request.client.host
     kiem_tra_gioi_han_dang_nhap(body.email, ip)
 
-    res = supabase.table("nguoi_dung").select("*").eq("email", body.email).eq("dang_hoat_dong", True).execute()
-    if not res.data:
+    user = tim_theo_email(body.email, lambda q: q.eq("dang_hoat_dong", True))
+    if not user:
         ghi_dang_nhap_sai(body.email, ip)
         audit.ghi_nhat_ky(audit.DANG_NHAP_THAT_BAI, f"Email khong ton tai: {body.email}",
                           request=request, ket_qua="that_bai")
         raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
 
-    user = res.data[0]
     if not kiem_tra_mat_khau(body.mat_khau, user["mat_khau_hash"]):
         ghi_dang_nhap_sai(body.email, ip)
         audit.ghi_nhat_ky(audit.DANG_NHAP_THAT_BAI, "Sai mat khau",
@@ -101,7 +118,7 @@ def dang_nhap_phu_huynh(body: DangNhapPhuHuynh, request: Request):
     ip = request.client.host
     kiem_tra_gioi_han_dang_nhap(body.email_phu_huynh, ip)
 
-    res = supabase.table("nguoi_dung").select("*").eq("email_phu_huynh", body.email_phu_huynh).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).execute()
+    res = supabase.table("nguoi_dung").select("*").ilike("email_phu_huynh", (body.email_phu_huynh or "").strip()).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).execute()
     if not res.data:
         ghi_dang_nhap_sai(body.email_phu_huynh, ip)
         raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
@@ -318,16 +335,13 @@ THONG_BAO_CHUNG = ("Neu email nay ton tai trong he thong va thuoc nhom duoc phep
 def quen_mat_khau(body: QuenMatKhauBody, request: Request):
     ip = request.client.host if request.client else ""
 
-    res = supabase.table("nguoi_dung").select("id, email, ho_ten, vai_tro, dang_hoat_dong") \
-        .eq("email", body.email).eq("dang_hoat_dong", True).execute()
+    user = tim_theo_email(body.email, lambda q: q.eq("dang_hoat_dong", True))
 
     # Luon tra ve cung mot thong bao (chong do tim tai khoan ton tai)
-    if not res.data:
+    if not user:
         audit.ghi_nhat_ky("yeu_cau_dat_lai_mat_khau", f"Email khong ton tai: {body.email}",
                           request=request, ket_qua="that_bai")
         return {"message": THONG_BAO_CHUNG}
-
-    user = res.data[0]
 
     # Hoc sinh / phu huynh khong dung luong email — phai qua GVCN
     if user["vai_tro"] not in VAI_TRO_DUOC_DAT_LAI_QUA_EMAIL:
