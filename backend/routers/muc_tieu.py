@@ -185,13 +185,6 @@ def xoa_muc_tieu(id: str, nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
         if muc_tieu["trang_thai"] not in ["nhap", "yeu_cau_sua"]:
             raise HTTPException(status_code=400, detail="Chi xoa ban nhap. OKR da nop can xin xoa.")
     supabase.table("muc_tieu").delete().eq("id", id).execute()
-    try:   # ghi nhat ky de truy vet ai da xoa OKR nao
-        import audit
-        audit.ghi_nhat_ky("xoa_okr",
-            f"Xoa OKR '{(muc_tieu.get('muc_tieu_lon') or '')[:60]}' (trang thai {muc_tieu.get('trang_thai')})",
-            nguoi_dung=nguoi_dung, doi_tuong_id=muc_tieu.get("hoc_sinh_id"))
-    except Exception:
-        pass
     return {"message": "Da xoa"}
 
 class DanhGiaPH(BaseModel):

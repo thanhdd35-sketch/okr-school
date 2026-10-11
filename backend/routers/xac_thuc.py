@@ -9,7 +9,6 @@ from auth import (hash_mat_khau, kiem_tra_mat_khau, tao_token, tao_token_lam_moi
                   xoa_dang_nhap_sai, lay_nguoi_dung_hien_tai,
                   giai_ma_token, thu_hoi_phien, LOAI_LAM_MOI)
 import audit
-import os
 
 router = APIRouter()
 
@@ -29,23 +28,6 @@ def kiem_tra_do_manh_mat_khau(mat_khau: str):
         raise HTTPException(status_code=400, detail="Mat khau phai co it nhat 1 chu hoa")
     if not any(c.isdigit() for c in mat_khau):
         raise HTTPException(status_code=400, detail="Mat khau phai co it nhat 1 chu so")
-
-
-def tim_theo_email(email: str, them_dieu_kien=None):
-    """Tim tai khoan theo email, KHONG phan biet hoa/thuong."""
-    e = (email or "").strip()
-    for buoc in ("eq", "ilike"):
-        q = supabase.table("nguoi_dung").select("*")
-        q = q.eq("email", e) if buoc == "eq" else q.ilike("email", e)
-        if them_dieu_kien:
-            q = them_dieu_kien(q)
-        try:
-            res = q.execute()
-        except Exception:
-            continue
-        if res.data:
-            return res.data[0]
-    return None
 
 
 def _bam_ma(ma: str) -> str:
@@ -69,13 +51,14 @@ def dang_nhap(body: DangNhapBody, request: Request):
     ip = request.client.host
     kiem_tra_gioi_han_dang_nhap(body.email, ip)
 
-    user = tim_theo_email(body.email, lambda q: q.eq("dang_hoat_dong", True))
-    if not user:
+    res = supabase.table("nguoi_dung").select("*").eq("email", body.email).eq("dang_hoat_dong", True).execute()
+    if not res.data:
         ghi_dang_nhap_sai(body.email, ip)
         audit.ghi_nhat_ky(audit.DANG_NHAP_THAT_BAI, f"Email khong ton tai: {body.email}",
                           request=request, ket_qua="that_bai")
         raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
 
+    user = res.data[0]
     if not kiem_tra_mat_khau(body.mat_khau, user["mat_khau_hash"]):
         ghi_dang_nhap_sai(body.email, ip)
         audit.ghi_nhat_ky(audit.DANG_NHAP_THAT_BAI, "Sai mat khau",
@@ -118,7 +101,7 @@ def dang_nhap_phu_huynh(body: DangNhapPhuHuynh, request: Request):
     ip = request.client.host
     kiem_tra_gioi_han_dang_nhap(body.email_phu_huynh, ip)
 
-    res = supabase.table("nguoi_dung").select("*").ilike("email_phu_huynh", (body.email_phu_huynh or "").strip()).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).execute()
+    res = supabase.table("nguoi_dung").select("*").eq("email_phu_huynh", body.email_phu_huynh).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).execute()
     if not res.data:
         ghi_dang_nhap_sai(body.email_phu_huynh, ip)
         raise HTTPException(status_code=401, detail="Email hoac mat khau khong dung")
@@ -335,13 +318,16 @@ THONG_BAO_CHUNG = ("Neu email nay ton tai trong he thong va thuoc nhom duoc phep
 def quen_mat_khau(body: QuenMatKhauBody, request: Request):
     ip = request.client.host if request.client else ""
 
-    user = tim_theo_email(body.email, lambda q: q.eq("dang_hoat_dong", True))
+    res = supabase.table("nguoi_dung").select("id, email, ho_ten, vai_tro, dang_hoat_dong") \
+        .eq("email", body.email).eq("dang_hoat_dong", True).execute()
 
     # Luon tra ve cung mot thong bao (chong do tim tai khoan ton tai)
-    if not user:
+    if not res.data:
         audit.ghi_nhat_ky("yeu_cau_dat_lai_mat_khau", f"Email khong ton tai: {body.email}",
                           request=request, ket_qua="that_bai")
         return {"message": THONG_BAO_CHUNG}
+
+    user = res.data[0]
 
     # Hoc sinh / phu huynh khong dung luong email — phai qua GVCN
     if user["vai_tro"] not in VAI_TRO_DUOC_DAT_LAI_QUA_EMAIL:
@@ -421,98 +407,3 @@ def thong_tin_ca_nhan(nguoi_dung=Depends(lay_nguoi_dung_hien_tai)):
     if not res.data:
         raise HTTPException(status_code=404, detail="Khong tim thay nguoi dung")
     return res.data[0]
-
-
-# ══════════════════════════════════════════════════════════════
-#  ĐĂNG NHẬP BẰNG GOOGLE
-#  Nguyen tac: KHONG tao tai khoan moi. Chi email da duoc quan tri vien
-#  nhap vao he thong tu truoc moi dang nhap duoc. Khong doi/xoa du lieu cu.
-# ══════════════════════════════════════════════════════════════
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
-
-
-class DangNhapGoogle(BaseModel):
-    id_token: str
-    hoc_sinh_id: Optional[str] = None   # khi 1 phu huynh co nhieu con
-
-
-def _xac_minh_google(token: str) -> dict:
-    """Kiem tra chu ky va han dung cua ma Google tra ve. Tra ve thong tin da xac minh."""
-    if not GOOGLE_CLIENT_ID:
-        raise HTTPException(status_code=503,
-            detail="Chua cau hinh GOOGLE_CLIENT_ID tren may chu. Lien he quan tri vien.")
-    thong_tin = None
-    try:   # cach chuan: tu kiem tra chu ky
-        from google.oauth2 import id_token as gg_id_token
-        from google.auth.transport import requests as gg_requests
-        thong_tin = gg_id_token.verify_oauth2_token(token, gg_requests.Request(), GOOGLE_CLIENT_ID)
-    except ImportError:
-        import httpx
-        r = httpx.get("https://oauth2.googleapis.com/tokeninfo", params={"id_token": token}, timeout=20)
-        if r.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ma dang nhap Google khong hop le")
-        thong_tin = r.json()
-        if thong_tin.get("aud") != GOOGLE_CLIENT_ID:
-            raise HTTPException(status_code=401, detail="Ma dang nhap Google khong danh cho ung dung nay")
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Ma dang nhap Google khong hop le hoac da het han")
-
-    if str(thong_tin.get("iss", "")).replace("https://", "") not in ("accounts.google.com",):
-        raise HTTPException(status_code=401, detail="Nguon dang nhap khong hop le")
-    if str(thong_tin.get("email_verified", "true")).lower() not in ("true", "1"):
-        raise HTTPException(status_code=401, detail="Email Google chua duoc xac minh")
-    email = (thong_tin.get("email") or "").strip().lower()
-    if not email:
-        raise HTTPException(status_code=401, detail="Khong doc duoc email tu Google")
-    return {"email": email, "ho_ten": thong_tin.get("name") or ""}
-
-
-@router.post("/dang-nhap-google")
-def dang_nhap_google(body: DangNhapGoogle, request: Request):
-    tt = _xac_minh_google(body.id_token)
-    email = tt["email"]
-
-    # 1) Email la tai khoan trong he thong (GV / HS / QTV / Pho HT)
-    user = tim_theo_email(email, lambda q: q.eq("dang_hoat_dong", True))
-    if user:
-        phien_ban = int(user.get("phien_ban_token") or 1)
-        du_lieu = {
-            "id": user["id"], "email": user["email"], "vai_tro": user["vai_tro"],
-            "ho_ten": user["ho_ten"], "ten_lop": user.get("ten_lop"),
-            "la_truong_khoi": user.get("la_truong_khoi", False),
-            "khoi_phu_trach": user.get("khoi_phu_trach"), "khoi": user.get("khoi"),
-        }
-        audit.ghi_nhat_ky(audit.DANG_NHAP, "Dang nhap bang Google",
-                          nguoi_dung_id=user["id"], vai_tro=user["vai_tro"], request=request)
-        return {
-            "token": tao_token(du_lieu, phien_ban=phien_ban),
-            "refresh_token": tao_token_lam_moi(user["id"], phien_ban),
-            "vai_tro": user["vai_tro"], "ho_ten": user["ho_ten"], "id": user["id"],
-            "ten_lop": user.get("ten_lop"), "la_truong_khoi": user.get("la_truong_khoi", False),
-            "khoi_phu_trach": user.get("khoi_phu_trach"), "khoi": user.get("khoi"),
-            "bat_buoc_doi_mat_khau": False,   # dang nhap bang Google thi khong can mat khau
-        }
-
-    # 2) Email la email phu huynh cua mot/ nhieu hoc sinh
-    con = supabase.table("nguoi_dung").select("id, ho_ten, ten_lop, phien_ban_token")         .ilike("email_phu_huynh", email).eq("vai_tro", "hoc_sinh").eq("dang_hoat_dong", True).execute().data or []
-    if con:
-        if len(con) > 1 and not body.hoc_sinh_id:
-            return {"can_chon_con": [{"id": c["id"], "ho_ten": c["ho_ten"], "ten_lop": c.get("ten_lop")} for c in con]}
-        hs = next((c for c in con if c["id"] == body.hoc_sinh_id), con[0])
-        phien_ban = int(hs.get("phien_ban_token") or 1)
-        du_lieu = {"id": hs["id"], "email": email, "vai_tro": "phu_huynh",
-                   "ho_ten_con": hs["ho_ten"], "hoc_sinh_id": hs["id"], "ten_lop": hs.get("ten_lop")}
-        audit.ghi_nhat_ky(audit.DANG_NHAP, "Phu huynh dang nhap bang Google",
-                          nguoi_dung_id=hs["id"], vai_tro="phu_huynh", doi_tuong_id=hs["id"], request=request)
-        return {
-            "token": tao_token(du_lieu, phien_ban=phien_ban),
-            "refresh_token": tao_token_lam_moi(hs["id"], phien_ban),
-            "vai_tro": "phu_huynh", "ho_ten_con": hs["ho_ten"], "lop": hs.get("ten_lop"),
-            "hoc_sinh_id": hs["id"], "id": hs["id"], "bat_buoc_doi_mat_khau": False,
-        }
-
-    # 3) Khong co trong he thong -> tu choi, KHONG tu tao tai khoan
-    audit.ghi_nhat_ky(audit.DANG_NHAP_THAT_BAI, f"Google: email chua dang ky ({email})",
-                      request=request, ket_qua="that_bai")
-    raise HTTPException(status_code=403,
-        detail="Email nay chua duoc nha truong dang ky trong he thong. Vui long lien he giao vien chu nhiem hoac quan tri vien.")
