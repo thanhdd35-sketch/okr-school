@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 import openpyxl
 import io
+import re
 from database import supabase
 from auth import (hash_mat_khau, lay_nguoi_dung_hien_tai, chi_giao_vien,
                   chi_quan_tri, thu_hoi_phien)
@@ -10,7 +11,15 @@ import audit
 
 router = APIRouter()
 
-MAT_KHAU_MAC_DINH = "Okr@2026"   # mat khau lan dau khi nhap danh sach / them moi; bat buoc doi o lan dang nhap dau
+MAT_KHAU_MAC_DINH = "Okr@2026"
+
+# Chan email sai dinh dang ngay khi nhap: email sai thi khong dang nhap duoc,
+# va cung khong dung duoc nut "Dang nhap bang Google".
+_MAU_EMAIL = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+
+def email_hop_le(e: str) -> bool:
+    return bool(_MAU_EMAIL.match((e or "").strip()))   # mat khau lan dau khi nhap danh sach / them moi; bat buoc doi o lan dang nhap dau
 
 # ============================================================
 #  [v2.6] SINH MAT KHAU NGAU NHIEN RIENG CHO TUNG TAI KHOAN
@@ -183,9 +192,12 @@ async def nhap_danh_sach(vai_tro: str, ten_lop: Optional[str] = None, file: Uplo
             if not ho_ten:
                 loi.append(f"Dong {i}: Thieu ho ten")
                 continue
-            if not email or "@" not in email:
-                loi.append(f"Dong {i}: Email khong hop le: '{email}'")
+            if not email_hop_le(email):
+                loi.append(f"Dong {i} ({ho_ten}): Email sai dinh dang, khong nhap duoc: '{email}'")
                 continue
+            if email_ph and not email_hop_le(email_ph):
+                loi.append(f"Dong {i} ({ho_ten}): Email phu huynh sai dinh dang: '{email_ph}' — da bo trong")
+                email_ph = None
             if vai_tro != "giao_vien" and not lop:
                 loi.append(f"Dong {i}: Khong xac dinh duoc lop (GV chua duoc phan lop)")
                 continue
