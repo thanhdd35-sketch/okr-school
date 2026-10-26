@@ -331,7 +331,10 @@ def quan_tri_doi_email(id: str, body: DoiEmail, request: Request, nguoi_dung=Dep
         raise HTTPException(status_code=400, detail="Email phu huynh chi ap dung cho hoc sinh")
 
     email_moi = body.email if body.email is not None and body.email.strip() != (tk.get("email") or "") else None
-    data = _chuan_bi_doi_email(id, email_moi, body.email_phu_huynh)
+    email_ph_moi = body.email_phu_huynh
+    if email_ph_moi is not None and (email_ph_moi.strip() or None) == tk.get("email_phu_huynh"):
+        email_ph_moi = None   # khong doi -> khong ghi, khong tao nhat ky thua
+    data = _chuan_bi_doi_email(id, email_moi, email_ph_moi)
     if not data:
         return {"message": "Khong co thay doi", "nguoi_dung": tk}
 

@@ -174,9 +174,27 @@ class SupabaseQuery:
             else:
                 params = self._build_filter_params()
                 params["select"] = self._select
-                r = client.get(f"{BASE}/{self.table}", headers=HEADERS, params=params)
-                r.raise_for_status()
-                return SupabaseResult(r.json())
+                if self._limit:
+                    r = client.get(f"{BASE}/{self.table}", headers=HEADERS, params=params)
+                    r.raise_for_status()
+                    return SupabaseResult(r.json())
+
+                # [v2.7] Supabase tra toi da 1000 dong moi lan. Truoc day ket qua bi cat AM THAM
+                # (vd: danh sach GV chi con 38/45 khi tong nguoi dung vuot 1000).
+                # Nay tu lay tiep theo trang; them "id" lam tieu chi phu de thu tu on dinh giua cac trang.
+                trang = 1000
+                params["order"] = (params["order"] + ",id.asc") if params.get("order") else "id.asc"
+                ket_qua, offset = [], 0
+                while True:
+                    params["limit"] = str(trang)
+                    params["offset"] = str(offset)
+                    r = client.get(f"{BASE}/{self.table}", headers=HEADERS, params=params)
+                    r.raise_for_status()
+                    lo = r.json()
+                    ket_qua.extend(lo)
+                    if len(lo) < trang:
+                        return SupabaseResult(ket_qua)
+                    offset += trang
 
 
 class SupabaseTable:
