@@ -256,19 +256,98 @@ class CapNhatHocSinh(BaseModel):
     email: Optional[str] = None
     email_phu_huynh: Optional[str] = None
 
-@router.put("/hoc-sinh/{id}")
-def cap_nhat_hoc_sinh(id: str, body: CapNhatHocSinh, nguoi_dung=Depends(chi_giao_vien)):
+
+class DoiEmail(BaseModel):
+    email: Optional[str] = None
+    email_phu_huynh: Optional[str] = None
+
+
+def _email_da_dung_boi_nguoi_khac(email: str, id_ban_than: str) -> bool:
+    """Email la ten dang nhap: khong phan biet hoa/thuong khi so trung."""
+    e = email.strip()
+    for buoc in ("eq", "ilike"):
+        q = supabase.table("nguoi_dung").select("id")
+        q = q.eq("email", e) if buoc == "eq" else q.ilike("email", e)
+        res = q.execute()
+        if any(str(r["id"]) != str(id_ban_than) for r in (res.data or [])):
+            return True
+    return False
+
+
+def _chuan_bi_doi_email(id: str, email_moi: Optional[str], email_ph_moi: Optional[str]) -> dict:
+    """Kiem tra va dung goi du lieu doi email; raise 400 neu sai dinh dang hoac trung."""
     data = {}
-    if body.ho_ten is not None: data["ho_ten"] = body.ho_ten
-    if body.email is not None: data["email"] = body.email
-    if body.email_phu_huynh is not None:
-        data["email_phu_huynh"] = body.email_phu_huynh.strip() or None
+    if email_moi is not None:
+        e = email_moi.strip()
+        if not email_hop_le(e):
+            raise HTTPException(status_code=400, detail=f"Email sai dinh dang: '{e}'")
+        if _email_da_dung_boi_nguoi_khac(e, id):
+            raise HTTPException(status_code=400, detail=f"Email '{e}' da duoc tai khoan khac su dung")
+        data["email"] = e
+    if email_ph_moi is not None:
+        eph = email_ph_moi.strip()
+        if eph and not email_hop_le(eph):
+            raise HTTPException(status_code=400, detail=f"Email phu huynh sai dinh dang: '{eph}'")
+        data["email_phu_huynh"] = eph or None
+    return data
+
+
+@router.put("/hoc-sinh/{id}")
+def cap_nhat_hoc_sinh(id: str, body: CapNhatHocSinh, request: Request, nguoi_dung=Depends(chi_giao_vien)):
+    # [v2.7] Truoc day: khong kiem tra pham vi lop, khong kiem tra dinh dang/trung email.
+    _kiem_tra_quyen_tren_tai_khoan(nguoi_dung, id)
+    cu = supabase.table("nguoi_dung").select("email").eq("id", id).execute().data or [{}]
+    email_moi = body.email if body.email is not None and body.email.strip() != (cu[0].get("email") or "") else None
+    data = _chuan_bi_doi_email(id, email_moi, body.email_phu_huynh)
+    if body.ho_ten is not None and body.ho_ten.strip():
+        data["ho_ten"] = body.ho_ten.strip()
     if not data:
         raise HTTPException(status_code=400, detail="Khong co du lieu de cap nhat")
     res = supabase.table("nguoi_dung").update(data).eq("id", id).eq("vai_tro", "hoc_sinh").execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Khong tim thay hoc sinh")
+    if "email" in data:
+        thu_hoi_phien(id)
+        audit.ghi_nhat_ky(audit.CAP_NHAT_TAI_KHOAN, f"Doi email dang nhap: {cu[0].get('email')} -> {data['email']}",
+                          nguoi_dung=nguoi_dung, doi_tuong_id=id, request=request)
     return res.data[0]
+
+
+@router.put("/{id}/doi-email")
+def quan_tri_doi_email(id: str, body: DoiEmail, request: Request, nguoi_dung=Depends(chi_quan_tri)):
+    """[v2.7] Quan tri vien doi email dang nhap cua giao vien / hoc sinh (va email phu huynh cua HS).
+
+    Email la ten dang nhap, nen sau khi doi: thu hoi moi phien dang mo cua tai khoan,
+    nguoi dung dang nhap lai bang email moi (mat khau giu nguyen). Du lieu OKR khong doi
+    vi moi lien ket deu theo id, khong theo email.
+    """
+    mt = supabase.table("nguoi_dung").select("id, email, email_phu_huynh, vai_tro").eq("id", id).execute()
+    if not mt.data:
+        raise HTTPException(status_code=404, detail="Khong tim thay tai khoan")
+    tk = mt.data[0]
+    if tk["vai_tro"] not in ("giao_vien", "hoc_sinh", "pho_hieu_truong"):
+        raise HTTPException(status_code=403, detail="Chi doi duoc email cua giao vien, hoc sinh, Pho Hieu truong")
+    if body.email_phu_huynh is not None and tk["vai_tro"] != "hoc_sinh":
+        raise HTTPException(status_code=400, detail="Email phu huynh chi ap dung cho hoc sinh")
+
+    email_moi = body.email if body.email is not None and body.email.strip() != (tk.get("email") or "") else None
+    data = _chuan_bi_doi_email(id, email_moi, body.email_phu_huynh)
+    if not data:
+        return {"message": "Khong co thay doi", "nguoi_dung": tk}
+
+    res = supabase.table("nguoi_dung").update(data).eq("id", id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Khong tim thay tai khoan")
+
+    mo_ta = []
+    if "email" in data:
+        mo_ta.append(f"email: {tk.get('email')} -> {data['email']}")
+        thu_hoi_phien(id)
+    if "email_phu_huynh" in data:
+        mo_ta.append(f"email phu huynh: {tk.get('email_phu_huynh')} -> {data['email_phu_huynh']}")
+    audit.ghi_nhat_ky(audit.CAP_NHAT_TAI_KHOAN, "Quan tri doi " + "; ".join(mo_ta),
+                      nguoi_dung=nguoi_dung, doi_tuong_id=id, request=request)
+    return {"message": "Da cap nhat email", "nguoi_dung": res.data[0]}
 
 def _kiem_tra_quyen_tren_tai_khoan(nguoi_dung: dict, id_muc_tieu: str):
     """[v2.6] Chan leo thang dac quyen.
