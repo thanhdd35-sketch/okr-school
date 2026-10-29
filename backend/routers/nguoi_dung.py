@@ -260,29 +260,61 @@ class CapNhatHocSinh(BaseModel):
 class DoiEmail(BaseModel):
     email: Optional[str] = None
     email_phu_huynh: Optional[str] = None
+    # [v2.7] Quan tri xac nhan thu hoi email tu tai khoan DA VO HIEU HOA va KHONG CO DU LIEU
+    thu_hoi_tu_tai_khoan_an: bool = False
+
+
+def _tai_khoan_dang_giu_email(email: str, id_ban_than: str) -> list:
+    """Email la ten dang nhap: khong phan biet hoa/thuong khi so trung."""
+    e = email.strip()
+    gap = {}
+    for buoc in ("eq", "ilike"):
+        q = supabase.table("nguoi_dung").select("id, ho_ten, ten_lop, vai_tro, dang_hoat_dong")
+        q = q.eq("email", e) if buoc == "eq" else q.ilike("email", e)
+        for r in (q.execute().data or []):
+            if str(r["id"]) != str(id_ban_than):
+                gap[r["id"]] = r
+    return list(gap.values())
+
+
+def _thu_hoi_duoc(tk: dict) -> bool:
+    """Chi thu hoi email cua tai khoan da vo hieu hoa VA chua co OKR nao (khong dung toi du lieu)."""
+    if tk.get("dang_hoat_dong", True):
+        return False
+    return not supabase.table("muc_tieu").select("id").eq("hoc_sinh_id", tk["id"]).limit(1).execute().data
 
 
 def _email_da_dung_boi_nguoi_khac(email: str, id_ban_than: str) -> bool:
-    """Email la ten dang nhap: khong phan biet hoa/thuong khi so trung."""
-    e = email.strip()
-    for buoc in ("eq", "ilike"):
-        q = supabase.table("nguoi_dung").select("id")
-        q = q.eq("email", e) if buoc == "eq" else q.ilike("email", e)
-        res = q.execute()
-        if any(str(r["id"]) != str(id_ban_than) for r in (res.data or [])):
-            return True
-    return False
+    return bool(_tai_khoan_dang_giu_email(email, id_ban_than))
 
 
-def _chuan_bi_doi_email(id: str, email_moi: Optional[str], email_ph_moi: Optional[str]) -> dict:
-    """Kiem tra va dung goi du lieu doi email; raise 400 neu sai dinh dang hoac trung."""
+def _chuan_bi_doi_email(id: str, email_moi: Optional[str], email_ph_moi: Optional[str],
+                        thu_hoi: bool = False, nguoi_dung: dict = None, request=None) -> dict:
+    """Kiem tra va dung goi du lieu doi email; raise 400/409 neu sai dinh dang hoac trung."""
     data = {}
     if email_moi is not None:
         e = email_moi.strip()
         if not email_hop_le(e):
             raise HTTPException(status_code=400, detail=f"Email sai dinh dang: '{e}'")
-        if _email_da_dung_boi_nguoi_khac(e, id):
-            raise HTTPException(status_code=400, detail=f"Email '{e}' da duoc tai khoan khac su dung")
+        giu = _tai_khoan_dang_giu_email(e, id)
+        if giu:
+            an_va_trong = [t for t in giu if _thu_hoi_duoc(t)]
+            if len(an_va_trong) == len(giu) and nguoi_dung is not None:
+                if not thu_hoi:
+                    t = giu[0]
+                    raise HTTPException(status_code=409, detail={
+                        "ma": "email_bi_giu_boi_tai_khoan_an",
+                        "thong_bao": f"Email '{e}' dang bi giu boi tai khoan DA VO HIEU HOA, chua co du lieu: "
+                                     f"{t.get('ho_ten')} (lop {t.get('ten_lop') or '-'}).",
+                    })
+                for t in giu:   # giai phong email, giu nguyen tai khoan an
+                    nhan = f"{e}.trung-lap-{str(t['id'])[:8]}"
+                    supabase.table("nguoi_dung").update({"email": nhan}).eq("id", t["id"]).execute()
+                    audit.ghi_nhat_ky(audit.CAP_NHAT_TAI_KHOAN,
+                                      f"Thu hoi email tu tai khoan an khong co du lieu: {e} -> {nhan}",
+                                      nguoi_dung=nguoi_dung, doi_tuong_id=t["id"], request=request)
+            else:
+                raise HTTPException(status_code=400, detail=f"Email '{e}' da duoc tai khoan khac su dung")
         data["email"] = e
     if email_ph_moi is not None:
         eph = email_ph_moi.strip()
@@ -334,7 +366,8 @@ def quan_tri_doi_email(id: str, body: DoiEmail, request: Request, nguoi_dung=Dep
     email_ph_moi = body.email_phu_huynh
     if email_ph_moi is not None and (email_ph_moi.strip() or None) == tk.get("email_phu_huynh"):
         email_ph_moi = None   # khong doi -> khong ghi, khong tao nhat ky thua
-    data = _chuan_bi_doi_email(id, email_moi, email_ph_moi)
+    data = _chuan_bi_doi_email(id, email_moi, email_ph_moi, thu_hoi=body.thu_hoi_tu_tai_khoan_an,
+                               nguoi_dung=nguoi_dung, request=request)
     if not data:
         return {"message": "Khong co thay doi", "nguoi_dung": tk}
 
